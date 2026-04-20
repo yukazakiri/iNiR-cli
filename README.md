@@ -1,6 +1,6 @@
 # inir-cli
 
-A Go CLI for generating Material You color palettes and applying them across 30+ desktop application targets. Extracted from the [iNiR](https://github.com/end-4/dots-hyprland) (illogical-impulse) desktop shell as a standalone tool.
+A Go CLI for generating Material You color palettes and applying them across 30+ desktop application targets. Extracted from the [iNiR](https://github.com/snowarch/iNiR) desktop shell as a standalone tool.
 
 ## Overview
 
@@ -182,7 +182,7 @@ inir-cli/
 
 ## Credits
 
-Extracted from [iNiR (illogical-impulse)](https://github.com/end-4/dots-hyprland) — a Hyprland-based desktop environment using Quickshell.
+Extracted from [iNiR](https://github.com/snowarch/iNiR) — a Hyprland-based desktop environment using Quickshell.
 
 Color science based on Google's [Material Color Utilities](https://github.com/material-foundation/material-color-utilities) (HCT color space, QuantizeCelebi).
 
