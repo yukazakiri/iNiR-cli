@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/snowarch/inir-cli/cmd"
+	"github.com/yukazakiri/inir-cli/cmd"
 )
 
 func main() {

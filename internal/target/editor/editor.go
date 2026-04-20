@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/yukazakiri/inir-cli/internal/target"
 )
 
 type Applier struct{}

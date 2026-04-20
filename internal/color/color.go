@@ -1,6 +1,6 @@
 package color
 
-import "github.com/snowarch/inir-cli/internal/color/material"
+import "github.com/yukazakiri/inir-cli/internal/color/material"
 
 type GenerateOptions = material.GenerateOptions
 type GenerateResult = material.GenerateResult

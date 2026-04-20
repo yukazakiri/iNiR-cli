@@ -1,16 +1,16 @@
 package cmd
 
 import (
-	"github.com/snowarch/inir-cli/internal/target"
-	"github.com/snowarch/inir-cli/internal/target/gtk"
-	"github.com/snowarch/inir-cli/internal/target/terminal"
-	"github.com/snowarch/inir-cli/internal/target/chrome"
-	"github.com/snowarch/inir-cli/internal/target/editor"
-	"github.com/snowarch/inir-cli/internal/target/spicetify"
-	"github.com/snowarch/inir-cli/internal/target/steam"
-	"github.com/snowarch/inir-cli/internal/target/vesktop"
-	"github.com/snowarch/inir-cli/internal/target/pear"
-	"github.com/snowarch/inir-cli/internal/target/sddm"
+	"github.com/yukazakiri/inir-cli/internal/target"
+	"github.com/yukazakiri/inir-cli/internal/target/gtk"
+	"github.com/yukazakiri/inir-cli/internal/target/terminal"
+	"github.com/yukazakiri/inir-cli/internal/target/chrome"
+	"github.com/yukazakiri/inir-cli/internal/target/editor"
+	"github.com/yukazakiri/inir-cli/internal/target/spicetify"
+	"github.com/yukazakiri/inir-cli/internal/target/steam"
+	"github.com/yukazakiri/inir-cli/internal/target/vesktop"
+	"github.com/yukazakiri/inir-cli/internal/target/pear"
+	"github.com/yukazakiri/inir-cli/internal/target/sddm"
 )
 
 func init() {
