@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/snowarch/inir-cli/internal/target/shared/colorutil"
 )
 
 type Applier struct{}
@@ -71,10 +70,10 @@ func resolveVesktopConfigDir(ctx *target.Context) string {
 
 func generateVesktopCSS(colors map[string]string) string {
 	pick := func(key, fallback string) string {
-		if v, ok := normalizeHex(colors[key]); ok {
+		if v, ok := colorutil.NormalizeHexLower(colors[key]); ok {
 			return v
 		}
-		if v, ok := normalizeHex(fallback); ok {
+		if v, ok := colorutil.NormalizeHexLower(fallback); ok {
 			return v
 		}
 		return "#000000"
@@ -112,15 +111,4 @@ body,
   --status-danger: var(--inir-error) !important;
 }
 `, background, surface, foreground, muted, accent, errorColor)
-}
-
-func normalizeHex(value string) (string, bool) {
-	trimmed := strings.TrimSpace(strings.TrimPrefix(value, "#"))
-	if len(trimmed) != 6 {
-		return "", false
-	}
-	if _, err := strconv.ParseUint(trimmed, 16, 32); err != nil {
-		return "", false
-	}
-	return "#" + strings.ToLower(trimmed), true
 }

@@ -5,11 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/snowarch/inir-cli/internal/target/shared/colorutil"
 )
 
 type Applier struct{}
@@ -543,10 +543,10 @@ func touchFile(path string) error {
 
 func pickPalette(palette map[string]string, key, fallback string) string {
 	value := strings.TrimSpace(palette[key])
-	if normalized, ok := normalizeHex(value); ok {
+	if normalized, ok := colorutil.NormalizeHexLower(value); ok {
 		return normalized
 	}
-	if normalized, ok := normalizeHex(fallback); ok {
+	if normalized, ok := colorutil.NormalizeHexLower(fallback); ok {
 		return normalized
 	}
 	return "#000000"
@@ -554,28 +554,17 @@ func pickPalette(palette map[string]string, key, fallback string) string {
 
 func pickTerminal(terminal map[string]string, key, fallback string) string {
 	value := strings.TrimSpace(terminal[key])
-	if normalized, ok := normalizeHex(value); ok {
+	if normalized, ok := colorutil.NormalizeHexLower(value); ok {
 		return normalized
 	}
-	if normalized, ok := normalizeHex(fallback); ok {
+	if normalized, ok := colorutil.NormalizeHexLower(fallback); ok {
 		return normalized
 	}
 	return "#000000"
 }
 
-func normalizeHex(value string) (string, bool) {
-	trimmed := strings.TrimSpace(strings.TrimPrefix(value, "#"))
-	if len(trimmed) != 6 {
-		return "", false
-	}
-	if _, err := strconv.ParseUint(trimmed, 16, 32); err != nil {
-		return "", false
-	}
-	return "#" + strings.ToLower(trimmed), true
-}
-
 func stripHash(value string) string {
-	normalized, ok := normalizeHex(value)
+	normalized, ok := colorutil.NormalizeHexLower(value)
 	if !ok {
 		return "000000"
 	}
@@ -583,13 +572,9 @@ func stripHash(value string) string {
 }
 
 func toRGB(value string) string {
-	normalized, ok := normalizeHex(value)
+	csv, ok := colorutil.HexToRGBCSV(value, false)
 	if !ok {
 		return "0,0,0"
 	}
-	hex := strings.TrimPrefix(normalized, "#")
-	r, _ := strconv.ParseUint(hex[0:2], 16, 8)
-	g, _ := strconv.ParseUint(hex[2:4], 16, 8)
-	b, _ := strconv.ParseUint(hex[4:6], 16, 8)
-	return fmt.Sprintf("%d,%d,%d", r, g, b)
+	return csv
 }

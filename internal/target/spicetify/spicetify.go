@@ -5,10 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/snowarch/inir-cli/internal/target/shared/colorutil"
 )
 
 type Applier struct{}
@@ -107,10 +107,10 @@ func resolveSpicetifyConfigPath(ctx *target.Context) string {
 func buildSpicetifyScheme(colors map[string]string) map[string]string {
 	pick := func(key, fallback string) string {
 		value := strings.TrimSpace(colors[key])
-		if normalized, ok := normalizeHex(value); ok {
+		if normalized, ok := colorutil.NormalizeHexLower(value); ok {
 			return normalized
 		}
-		if normalized, ok := normalizeHex(fallback); ok {
+		if normalized, ok := colorutil.NormalizeHexLower(fallback); ok {
 			return normalized
 		}
 		return "#000000"
@@ -255,25 +255,10 @@ func upsertManagedBlock(current, managedBlock string) string {
 	return current + "\n" + managedBlock + "\n"
 }
 
-func normalizeHex(value string) (string, bool) {
-	trimmed := strings.TrimSpace(strings.TrimPrefix(value, "#"))
-	if len(trimmed) != 6 {
-		return "", false
-	}
-	if _, err := strconv.ParseUint(trimmed, 16, 32); err != nil {
-		return "", false
-	}
-	return "#" + strings.ToLower(trimmed), true
-}
-
 func hexToRGB(value string) string {
-	normalized, ok := normalizeHex(value)
+	result, ok := colorutil.HexToRGBCSV(value, false)
 	if !ok {
 		return "0,0,0"
 	}
-	hex := strings.TrimPrefix(normalized, "#")
-	r, _ := strconv.ParseUint(hex[0:2], 16, 8)
-	g, _ := strconv.ParseUint(hex[2:4], 16, 8)
-	b, _ := strconv.ParseUint(hex[4:6], 16, 8)
-	return fmt.Sprintf("%d,%d,%d", r, g, b)
+	return result
 }

@@ -6,10 +6,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/snowarch/inir-cli/internal/target/shared/colorutil"
 )
 
 type Applier struct{}
@@ -206,11 +206,11 @@ func resolveXDGCacheHome(ctx *target.Context) string {
 
 func generateSteamCSS(colors map[string]string) string {
 	readToken := func(name, fallback string) string {
-		value, ok := normalizeHex(colors[name])
+		value, ok := colorutil.NormalizeHexLower(colors[name])
 		if ok {
 			return hexToRGBCSV(value)
 		}
-		if fallbackHex, ok := normalizeHex(fallback); ok {
+		if fallbackHex, ok := colorutil.NormalizeHexLower(fallback); ok {
 			return hexToRGBCSV(fallbackHex)
 		}
 		return "0, 0, 0"
@@ -287,25 +287,10 @@ func generateSteamCSS(colors map[string]string) string {
 	)
 }
 
-func normalizeHex(value string) (string, bool) {
-	trimmed := strings.TrimSpace(strings.TrimPrefix(value, "#"))
-	if len(trimmed) != 6 {
-		return "", false
-	}
-	if _, err := strconv.ParseUint(trimmed, 16, 32); err != nil {
-		return "", false
-	}
-	return "#" + strings.ToLower(trimmed), true
-}
-
 func hexToRGBCSV(value string) string {
-	normalized, ok := normalizeHex(value)
+	csv, ok := colorutil.HexToRGBCSV(value, true)
 	if !ok {
 		return "0, 0, 0"
 	}
-	hex := strings.TrimPrefix(normalized, "#")
-	r, _ := strconv.ParseUint(hex[0:2], 16, 8)
-	g, _ := strconv.ParseUint(hex[2:4], 16, 8)
-	b, _ := strconv.ParseUint(hex[4:6], 16, 8)
-	return fmt.Sprintf("%d, %d, %d", r, g, b)
+	return csv
 }

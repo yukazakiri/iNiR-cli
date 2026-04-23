@@ -6,10 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/snowarch/inir-cli/internal/target/shared/colorutil"
 )
 
 type Applier struct{}
@@ -97,10 +97,10 @@ func readPearColors(ctx *target.Context) (map[string]string, error) {
 
 func generatePearCSS(colors map[string]string) string {
 	pick := func(key, fallback string) string {
-		if v, ok := normalizeHex(colors[key]); ok {
+		if v, ok := colorutil.NormalizeHexLower(colors[key]); ok {
 			return v
 		}
-		if v, ok := normalizeHex(fallback); ok {
+		if v, ok := colorutil.NormalizeHexLower(fallback); ok {
 			return v
 		}
 		return "#000000"
@@ -232,15 +232,4 @@ func ensureDesktopOverride(ctx *target.Context, binary, port string) error {
 	}
 
 	return os.WriteFile(userDesktop, []byte(content), 0644)
-}
-
-func normalizeHex(value string) (string, bool) {
-	trimmed := strings.TrimSpace(strings.TrimPrefix(value, "#"))
-	if len(trimmed) != 6 {
-		return "", false
-	}
-	if _, err := strconv.ParseUint(trimmed, 16, 32); err != nil {
-		return "", false
-	}
-	return "#" + strings.ToLower(trimmed), true
 }

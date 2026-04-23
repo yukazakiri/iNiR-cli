@@ -6,10 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/snowarch/inir-cli/internal/target/shared/colorutil"
 )
 
 type Applier struct{}
@@ -176,13 +176,5 @@ func fixPreferences(prefsFile, mode string) error {
 }
 
 func normalizeHex(value string) (string, bool) {
-	trimmed := strings.TrimSpace(value)
-	trimmed = strings.TrimPrefix(trimmed, "#")
-	if len(trimmed) != 6 {
-		return "", false
-	}
-	if _, err := strconv.ParseUint(trimmed, 16, 32); err != nil {
-		return "", false
-	}
-	return "#" + strings.ToUpper(trimmed), true
+	return colorutil.NormalizeHexUpper(value)
 }
