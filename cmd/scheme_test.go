@@ -1,6 +1,9 @@
 package cmd
 
-import "testing"
+import (
+	"sort"
+	"testing"
+)
 
 func TestAllSchemeTargetsIncludesZedAndNoDuplicates(t *testing.T) {
 	t.Parallel()
@@ -21,5 +24,9 @@ func TestAllSchemeTargetsIncludesZedAndNoDuplicates(t *testing.T) {
 
 	if !foundZed {
 		t.Fatalf("expected zed target in scheme apply-all list")
+	}
+
+	if !sort.StringsAreSorted(targets) {
+		t.Fatalf("expected scheme targets to be sorted for deterministic all-target execution")
 	}
 }

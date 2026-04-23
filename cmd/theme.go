@@ -247,7 +247,7 @@ func runThemeApply(cmd *cobra.Command, args []string) error {
 
 	targetList := args
 	if len(targetList) == 1 && targetList[0] == "all" {
-		targetList = []string{"gtk-kde", "terminals", "editors", "zed", "chrome", "spicetify", "sddm", "steam", "vesktop", "pear-desktop"}
+		targetList = allRegisteredTargets()
 	}
 
 	ctx := &target.Context{

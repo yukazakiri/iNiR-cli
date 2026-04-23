@@ -178,18 +178,7 @@ func applySchemeTargets(outputDir string) error {
 }
 
 func allSchemeTargets() []string {
-	return []string{
-		"gtk-kde",
-		"terminals",
-		"editors",
-		"zed",
-		"chrome",
-		"spicetify",
-		"sddm",
-		"steam",
-		"vesktop",
-		"pear-desktop",
-	}
+	return allRegisteredTargets()
 }
 
 func generatePresetTerminalColors(c *presets.PresetColors, harmony, termSat, termBri float64) map[string]string {
