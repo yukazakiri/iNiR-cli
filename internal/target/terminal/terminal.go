@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/snowarch/inir-cli/internal/target"
@@ -11,42 +12,150 @@ import (
 
 type Applier struct{}
 
+type terminalWriter struct {
+	id     string
+	path   func(ctx *target.Context) string
+	render func(palette map[string]string, terminal map[string]string) string
+}
+
+var injectAllPTS = injectSequences
+
 func (a *Applier) Apply(ctx *target.Context) error {
+	if ctx == nil || ctx.Config == nil {
+		return fmt.Errorf("terminal apply: nil context or config")
+	}
+
 	if !ctx.Config.WallpaperTheming.EnableTerminal {
 		return nil
 	}
 
-	termColors, err := ctx.ReadTerminalJSON()
+	terminalColors, err := ctx.ReadTerminalJSON()
 	if err != nil {
 		return fmt.Errorf("read terminal.json: %w", err)
 	}
 
-	sequences := buildANSISequences(termColors)
-	sequencesDir := filepath.Join(ctx.OutputDir, "terminal")
-	os.MkdirAll(sequencesDir, 0755)
-	os.WriteFile(filepath.Join(sequencesDir, "sequences.txt"), []byte(sequences), 0644)
+	palette, err := ctx.ReadPaletteJSON()
+	if err != nil {
+		palette, _ = ctx.ReadColorsJSON()
+	}
 
-	injectSequences(sequences)
+	sequences := buildANSISequences(terminalColors)
+	if err := writeSequencesFile(ctx, sequences); err != nil {
+		return err
+	}
+
+	injectAllPTS(sequences)
+
+	if err := writeTerminalConfigs(ctx, palette, terminalColors, ctx.Config.WallpaperTheming.Terminals); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func writeSequencesFile(ctx *target.Context, sequences string) error {
+	sequencesDir := filepath.Join(ctx.OutputDir, "terminal")
+	if err := os.MkdirAll(sequencesDir, 0755); err != nil {
+		return fmt.Errorf("create terminal output dir: %w", err)
+	}
+
+	path := filepath.Join(sequencesDir, "sequences.txt")
+	if err := os.WriteFile(path, []byte(sequences), 0644); err != nil {
+		return fmt.Errorf("write terminal sequences: %w", err)
+	}
+
+	return nil
+}
+
+func writeTerminalConfigs(ctx *target.Context, palette map[string]string, terminal map[string]string, enabled map[string]bool) error {
+	for _, writer := range terminalWriters() {
+		if !isTerminalEnabled(enabled, writer.id) {
+			continue
+		}
+
+		path := writer.path(ctx)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return fmt.Errorf("create config dir for %s: %w", writer.id, err)
+		}
+
+		if err := os.WriteFile(path, []byte(writer.render(palette, terminal)), 0644); err != nil {
+			return fmt.Errorf("write %s config: %w", writer.id, err)
+		}
+
+		if writer.id == "kitty" {
+			_ = ensureLineInFile(filepath.Join(ctx.XDGConfigHome(), "kitty", "kitty.conf"), "include current-theme.conf")
+		}
+	}
+
+	return nil
+}
+
+func isTerminalEnabled(enabled map[string]bool, terminalID string) bool {
+	if len(enabled) == 0 {
+		return true
+	}
+	value, ok := enabled[terminalID]
+	if !ok {
+		return true
+	}
+	return value
+}
+
+func terminalWriters() []terminalWriter {
+	return []terminalWriter{
+		{
+			id: "kitty",
+			path: func(ctx *target.Context) string {
+				return filepath.Join(ctx.XDGConfigHome(), "kitty", "current-theme.conf")
+			},
+			render: renderKittyConfig,
+		},
+		{
+			id: "alacritty",
+			path: func(ctx *target.Context) string {
+				return filepath.Join(ctx.XDGConfigHome(), "alacritty", "colors.toml")
+			},
+			render: renderAlacrittyConfig,
+		},
+		{
+			id: "wezterm",
+			path: func(ctx *target.Context) string {
+				return filepath.Join(ctx.XDGConfigHome(), "wezterm", "colors.lua")
+			},
+			render: renderWeztermConfig,
+		},
+		{
+			id: "ghostty",
+			path: func(ctx *target.Context) string {
+				return filepath.Join(ctx.XDGConfigHome(), "ghostty", "colors")
+			},
+			render: renderGhosttyConfig,
+		},
+		{
+			id: "foot",
+			path: func(ctx *target.Context) string {
+				return filepath.Join(ctx.XDGConfigHome(), "foot", "colors.ini")
+			},
+			render: renderFootConfig,
+		},
+	}
 }
 
 func buildANSISequences(colors map[string]string) string {
 	var sb strings.Builder
 	for i := 0; i <= 15; i++ {
 		key := fmt.Sprintf("term%d", i)
-		hex := colors[key]
-		hex = strings.TrimPrefix(hex, "#")
+		hex := stripHash(colors[key])
 		sb.WriteString(fmt.Sprintf("\x1b]4;%d;#%s\x1b\\", i, hex))
 	}
 	if fg, ok := colors["term7"]; ok {
-		sb.WriteString(fmt.Sprintf("\x1b]10;#%s\x1b\\", strings.TrimPrefix(fg, "#")))
+		sb.WriteString(fmt.Sprintf("\x1b]10;#%s\x1b\\", stripHash(fg)))
 	}
 	if bg, ok := colors["term0"]; ok {
-		sb.WriteString(fmt.Sprintf("\x1b]11;#%s\x1b\\", strings.TrimPrefix(bg, "#")))
+		sb.WriteString(fmt.Sprintf("\x1b]11;#%s\x1b\\", stripHash(bg)))
 	}
 	if cur, ok := colors["term7"]; ok {
-		sb.WriteString(fmt.Sprintf("\x1b]12;#%s\x1b\\", strings.TrimPrefix(cur, "#")))
+		sb.WriteString(fmt.Sprintf("\x1b]12;#%s\x1b\\", stripHash(cur)))
 	}
 	return sb.String()
 }
@@ -65,7 +174,287 @@ func injectSequences(sequences string) {
 		if err != nil {
 			continue
 		}
-		f.WriteString(sequences)
-		f.Close()
+		_, _ = f.WriteString(sequences)
+		_ = f.Close()
 	}
+}
+
+func renderKittyConfig(palette map[string]string, terminal map[string]string) string {
+	return fmt.Sprintf(`# Auto-generated by inir-cli
+foreground %s
+background %s
+selection_foreground %s
+selection_background %s
+cursor %s
+active_border_color %s
+inactive_border_color %s
+
+color0 %s
+color1 %s
+color2 %s
+color3 %s
+color4 %s
+color5 %s
+color6 %s
+color7 %s
+color8 %s
+color9 %s
+color10 %s
+color11 %s
+color12 %s
+color13 %s
+color14 %s
+color15 %s
+`,
+		pickTerminal(terminal, "term15", "#cdd6f4"),
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term15", "#cdd6f4"),
+		pickPalette(palette, "primary", "#cba6f7"),
+		pickPalette(palette, "primary", "#cba6f7"),
+		pickTerminal(terminal, "term8", "#585b70"),
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term1", "#f38ba8"),
+		pickTerminal(terminal, "term2", "#a6e3a1"),
+		pickTerminal(terminal, "term3", "#f9e2af"),
+		pickTerminal(terminal, "term4", "#89b4fa"),
+		pickTerminal(terminal, "term5", "#cba6f7"),
+		pickTerminal(terminal, "term6", "#94e2d5"),
+		pickTerminal(terminal, "term7", "#cdd6f4"),
+		pickTerminal(terminal, "term8", "#585b70"),
+		pickTerminal(terminal, "term9", "#f38ba8"),
+		pickTerminal(terminal, "term10", "#a6e3a1"),
+		pickTerminal(terminal, "term11", "#f9e2af"),
+		pickTerminal(terminal, "term12", "#89b4fa"),
+		pickTerminal(terminal, "term13", "#cba6f7"),
+		pickTerminal(terminal, "term14", "#94e2d5"),
+		pickTerminal(terminal, "term15", "#ffffff"),
+	)
+}
+
+func renderAlacrittyConfig(_ map[string]string, terminal map[string]string) string {
+	return fmt.Sprintf(`# Auto-generated by inir-cli
+[colors.primary]
+background = "%s"
+foreground = "%s"
+
+[colors.normal]
+black = "%s"
+red = "%s"
+green = "%s"
+yellow = "%s"
+blue = "%s"
+magenta = "%s"
+cyan = "%s"
+white = "%s"
+
+[colors.bright]
+black = "%s"
+red = "%s"
+green = "%s"
+yellow = "%s"
+blue = "%s"
+magenta = "%s"
+cyan = "%s"
+white = "%s"
+`,
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term15", "#cdd6f4"),
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term1", "#f38ba8"),
+		pickTerminal(terminal, "term2", "#a6e3a1"),
+		pickTerminal(terminal, "term3", "#f9e2af"),
+		pickTerminal(terminal, "term4", "#89b4fa"),
+		pickTerminal(terminal, "term5", "#cba6f7"),
+		pickTerminal(terminal, "term6", "#94e2d5"),
+		pickTerminal(terminal, "term7", "#cdd6f4"),
+		pickTerminal(terminal, "term8", "#585b70"),
+		pickTerminal(terminal, "term9", "#f38ba8"),
+		pickTerminal(terminal, "term10", "#a6e3a1"),
+		pickTerminal(terminal, "term11", "#f9e2af"),
+		pickTerminal(terminal, "term12", "#89b4fa"),
+		pickTerminal(terminal, "term13", "#cba6f7"),
+		pickTerminal(terminal, "term14", "#94e2d5"),
+		pickTerminal(terminal, "term15", "#ffffff"),
+	)
+}
+
+func renderWeztermConfig(_ map[string]string, terminal map[string]string) string {
+	return fmt.Sprintf(`-- Auto-generated by inir-cli
+return {
+  foreground = "%s",
+  background = "%s",
+  ansi = {"%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s"},
+  brights = {"%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s"},
+}
+`,
+		pickTerminal(terminal, "term15", "#cdd6f4"),
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term1", "#f38ba8"),
+		pickTerminal(terminal, "term2", "#a6e3a1"),
+		pickTerminal(terminal, "term3", "#f9e2af"),
+		pickTerminal(terminal, "term4", "#89b4fa"),
+		pickTerminal(terminal, "term5", "#cba6f7"),
+		pickTerminal(terminal, "term6", "#94e2d5"),
+		pickTerminal(terminal, "term7", "#cdd6f4"),
+		pickTerminal(terminal, "term8", "#585b70"),
+		pickTerminal(terminal, "term9", "#f38ba8"),
+		pickTerminal(terminal, "term10", "#a6e3a1"),
+		pickTerminal(terminal, "term11", "#f9e2af"),
+		pickTerminal(terminal, "term12", "#89b4fa"),
+		pickTerminal(terminal, "term13", "#cba6f7"),
+		pickTerminal(terminal, "term14", "#94e2d5"),
+		pickTerminal(terminal, "term15", "#ffffff"),
+	)
+}
+
+func renderGhosttyConfig(_ map[string]string, terminal map[string]string) string {
+	return fmt.Sprintf(`# Auto-generated by inir-cli
+background = %s
+foreground = %s
+palette = 0=%s
+palette = 1=%s
+palette = 2=%s
+palette = 3=%s
+palette = 4=%s
+palette = 5=%s
+palette = 6=%s
+palette = 7=%s
+palette = 8=%s
+palette = 9=%s
+palette = 10=%s
+palette = 11=%s
+palette = 12=%s
+palette = 13=%s
+palette = 14=%s
+palette = 15=%s
+`,
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term15", "#cdd6f4"),
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term1", "#f38ba8"),
+		pickTerminal(terminal, "term2", "#a6e3a1"),
+		pickTerminal(terminal, "term3", "#f9e2af"),
+		pickTerminal(terminal, "term4", "#89b4fa"),
+		pickTerminal(terminal, "term5", "#cba6f7"),
+		pickTerminal(terminal, "term6", "#94e2d5"),
+		pickTerminal(terminal, "term7", "#cdd6f4"),
+		pickTerminal(terminal, "term8", "#585b70"),
+		pickTerminal(terminal, "term9", "#f38ba8"),
+		pickTerminal(terminal, "term10", "#a6e3a1"),
+		pickTerminal(terminal, "term11", "#f9e2af"),
+		pickTerminal(terminal, "term12", "#89b4fa"),
+		pickTerminal(terminal, "term13", "#cba6f7"),
+		pickTerminal(terminal, "term14", "#94e2d5"),
+		pickTerminal(terminal, "term15", "#ffffff"),
+	)
+}
+
+func renderFootConfig(_ map[string]string, terminal map[string]string) string {
+	return fmt.Sprintf(`# Auto-generated by inir-cli
+[colors]
+foreground=%s
+background=%s
+regular0=%s
+regular1=%s
+regular2=%s
+regular3=%s
+regular4=%s
+regular5=%s
+regular6=%s
+regular7=%s
+bright0=%s
+bright1=%s
+bright2=%s
+bright3=%s
+bright4=%s
+bright5=%s
+bright6=%s
+bright7=%s
+`,
+		pickTerminal(terminal, "term15", "#cdd6f4"),
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term0", "#1e1e2e"),
+		pickTerminal(terminal, "term1", "#f38ba8"),
+		pickTerminal(terminal, "term2", "#a6e3a1"),
+		pickTerminal(terminal, "term3", "#f9e2af"),
+		pickTerminal(terminal, "term4", "#89b4fa"),
+		pickTerminal(terminal, "term5", "#cba6f7"),
+		pickTerminal(terminal, "term6", "#94e2d5"),
+		pickTerminal(terminal, "term7", "#cdd6f4"),
+		pickTerminal(terminal, "term8", "#585b70"),
+		pickTerminal(terminal, "term9", "#f38ba8"),
+		pickTerminal(terminal, "term10", "#a6e3a1"),
+		pickTerminal(terminal, "term11", "#f9e2af"),
+		pickTerminal(terminal, "term12", "#89b4fa"),
+		pickTerminal(terminal, "term13", "#cba6f7"),
+		pickTerminal(terminal, "term14", "#94e2d5"),
+		pickTerminal(terminal, "term15", "#ffffff"),
+	)
+}
+
+func ensureLineInFile(path, line string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+
+	content := ""
+	if data, err := os.ReadFile(path); err == nil {
+		content = string(data)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	if strings.Contains(content, line) {
+		return nil
+	}
+
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	content += line + "\n"
+
+	return os.WriteFile(path, []byte(content), 0644)
+}
+
+func pickPalette(palette map[string]string, key, fallback string) string {
+	value := strings.TrimSpace(palette[key])
+	if normalized, ok := normalizeHex(value); ok {
+		return normalized
+	}
+	if normalized, ok := normalizeHex(fallback); ok {
+		return normalized
+	}
+	return "#000000"
+}
+
+func pickTerminal(terminal map[string]string, key, fallback string) string {
+	value := strings.TrimSpace(terminal[key])
+	if normalized, ok := normalizeHex(value); ok {
+		return normalized
+	}
+	if normalized, ok := normalizeHex(fallback); ok {
+		return normalized
+	}
+	return "#000000"
+}
+
+func normalizeHex(value string) (string, bool) {
+	trimmed := strings.TrimSpace(strings.TrimPrefix(value, "#"))
+	if len(trimmed) != 6 {
+		return "", false
+	}
+	if _, err := strconv.ParseUint(trimmed, 16, 32); err != nil {
+		return "", false
+	}
+	return "#" + strings.ToLower(trimmed), true
+}
+
+func stripHash(value string) string {
+	normalized, ok := normalizeHex(value)
+	if !ok {
+		return "000000"
+	}
+	return strings.TrimPrefix(normalized, "#")
 }
