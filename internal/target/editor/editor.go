@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,15 +26,41 @@ func (a *Applier) Apply(ctx *target.Context) error {
 }
 
 func (a *ZedApplier) Apply(ctx *target.Context) error {
+	if ctx == nil || ctx.Config == nil {
+		return fmt.Errorf("zed apply: nil context or config")
+	}
+
 	if !ctx.Config.WallpaperTheming.EnableZed {
 		return nil
 	}
 
 	colors, err := ctx.ReadPaletteJSON()
 	if err != nil {
+		colors, err = ctx.ReadColorsJSON()
+		if err != nil {
+			return err
+		}
+	}
+
+	themesDir := filepath.Join(ctx.XDGConfigHome(), "zed", "themes")
+	if err := os.MkdirAll(themesDir, 0755); err != nil {
+		return err
+	}
+	outputPath := filepath.Join(themesDir, "ii-theme.json")
+
+	content, err := generateZedThemeJSON(colors)
+	if err != nil {
 		return err
 	}
 
+	if err := os.WriteFile(outputPath, content, 0644); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func generateZedThemeJSON(colors map[string]string) ([]byte, error) {
 	pick := func(key, fallback string) string {
 		if v, ok := colors[key]; ok && v != "" {
 			return v
@@ -41,9 +68,35 @@ func (a *ZedApplier) Apply(ctx *target.Context) error {
 		return fallback
 	}
 
-	_ = pick
+	theme := map[string]interface{}{
+		"$schema": "https://zed.dev/schema/themes/v0.2.0.json",
+		"name":    "iNiR",
+		"author":  "inir-cli",
+		"themes": []interface{}{
+			map[string]interface{}{
+				"name":       "iNiR Dark",
+				"appearance": "dark",
+				"style": map[string]interface{}{
+					"background":            pick("surface", "#1e1e2e"),
+					"surface.background":    pick("surface_container", "#313244"),
+					"text":                  pick("on_surface", "#cdd6f4"),
+					"text.muted":            pick("on_surface_variant", "#a6adc8"),
+					"editor.background":     pick("surface_container_low", "#181825"),
+					"editor.foreground":     pick("on_surface", "#cdd6f4"),
+					"panel.background":      pick("surface", "#1e1e2e"),
+					"tab.active_background": pick("surface_container_high", "#45475a"),
+					"border.focused":        pick("primary", "#cba6f7"),
+					"icon.accent":           pick("primary", "#cba6f7"),
+				},
+			},
+		},
+	}
 
-	return nil
+	b, err := json.MarshalIndent(theme, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
 }
 
 func generateNeovimSpec(ctx *target.Context) {
