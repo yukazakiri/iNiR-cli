@@ -2,9 +2,11 @@ package chrome
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/snowarch/inir-cli/internal/target"
@@ -12,97 +14,128 @@ import (
 
 type Applier struct{}
 
+type browserTarget struct {
+	bin       string
+	policyDir string
+	prefsDir  string
+}
+
+var (
+	lookPath = exec.LookPath
+	startCommand = func(name string, args ...string) error {
+		cmd := exec.Command(name, args...)
+		return cmd.Start()
+	}
+	browserTargets = func(ctx *target.Context) []browserTarget {
+		return []browserTarget{
+			{bin: "google-chrome-stable", policyDir: "/etc/opt/chrome/policies/managed", prefsDir: filepath.Join(ctx.Home(), ".config/google-chrome")},
+			{bin: "chromium", policyDir: "/etc/chromium/policies/managed", prefsDir: filepath.Join(ctx.Home(), ".config/chromium")},
+			{bin: "brave", policyDir: "/etc/brave/policies/managed", prefsDir: filepath.Join(ctx.Home(), ".config/BraveSoftware/Brave-Browser")},
+		}
+	}
+)
+
 func (a *Applier) Apply(ctx *target.Context) error {
+	if ctx == nil || ctx.Config == nil {
+		return fmt.Errorf("chrome apply: nil context or config")
+	}
+
 	if !ctx.Config.WallpaperTheming.EnableChrome {
 		return nil
 	}
 
-	var seedColor string
-	if data, err := os.ReadFile(filepath.Join(ctx.OutputDir, "color.txt")); err == nil {
-		seedColor = strings.TrimSpace(string(data))
-	}
-	if seedColor == "" {
-		colors, err := ctx.ReadPaletteJSON()
-		if err != nil {
-			return err
-		}
-		if v, ok := colors["primary"]; ok {
-			seedColor = v
-		}
+	seedColor, err := resolveSeedColor(ctx)
+	if err != nil {
+		return err
 	}
 	if seedColor == "" {
 		return nil
 	}
-	seedColor = strings.TrimPrefix(seedColor, "#")
-	if len(seedColor) != 6 {
-		return nil
-	}
-	seedColor = "#" + seedColor
 
-	meta, _ := ctx.ReadMetaJSON()
-	mode := "dark"
-	if m, ok := meta["mode"].(string); ok {
-		mode = m
+	mode := resolveMode(ctx)
+	policyJSON, err := buildPolicyJSON(seedColor)
+	if err != nil {
+		return err
 	}
 
-	variant := "tonal_spot"
-	_ = variant
-	if t, ok := meta["scheme"].(string); ok {
-		t = strings.TrimPrefix(t, "scheme-")
-		switch t {
-		case "tonal-spot":
-			variant = "tonal_spot"
-		case "neutral":
-			variant = "neutral"
-		case "vibrant":
-			variant = "vibrant"
-		case "expressive":
-			variant = "expressive"
-		default:
-			variant = "neutral"
-		}
-	}
-
-	browsers := []struct {
-		bin        string
-		policyDir  string
-		prefsDir   string
-	}{
-		{"google-chrome-stable", "/etc/opt/chrome/policies/managed", filepath.Join(ctx.Home(), ".config/google-chrome")},
-		{"chromium", "/etc/chromium/policies/managed", filepath.Join(ctx.Home(), ".config/chromium")},
-		{"brave", "/etc/brave/policies/managed", filepath.Join(ctx.Home(), ".config/BraveSoftware/Brave-Browser")},
-	}
-
-	for _, b := range browsers {
-		if _, err := exec.LookPath(b.bin); err != nil {
+	for _, b := range browserTargets(ctx) {
+		if _, err := lookPath(b.bin); err != nil {
 			continue
 		}
 
-		policy := map[string]string{"BrowserThemeColor": seedColor}
-		policyJSON, _ := json.Marshal(policy)
-		policyDir := b.policyDir
-		if err := os.MkdirAll(policyDir, 0755); err == nil {
-			os.WriteFile(filepath.Join(policyDir, "ii-theme.json"), policyJSON, 0644)
-		}
+		_ = writePolicy(filepath.Join(b.policyDir, "ii-theme.json"), policyJSON)
 
 		prefsFile := filepath.Join(b.prefsDir, "Default", "Preferences")
-		os.MkdirAll(filepath.Dir(prefsFile), 0755)
-		fixPreferences(prefsFile, mode)
+		_ = os.MkdirAll(filepath.Dir(prefsFile), 0755)
+		_ = fixPreferences(prefsFile, mode)
 
-		exec.Command(b.bin, "--refresh-platform-policy", "--no-startup-window").Start()
+		_ = startCommand(b.bin, "--refresh-platform-policy", "--no-startup-window")
 	}
 
 	return nil
 }
 
-func fixPreferences(prefsFile, mode string) {
+func resolveSeedColor(ctx *target.Context) (string, error) {
+	if data, err := os.ReadFile(filepath.Join(ctx.OutputDir, "color.txt")); err == nil {
+		if normalized, ok := normalizeHex(string(data)); ok {
+			return normalized, nil
+		}
+	}
+
+	colors, err := ctx.ReadPaletteJSON()
+	if err != nil {
+		colors, err = ctx.ReadColorsJSON()
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if normalized, ok := normalizeHex(colors["primary"]); ok {
+		return normalized, nil
+	}
+
+	return "", nil
+}
+
+func resolveMode(ctx *target.Context) string {
+	meta, err := ctx.ReadMetaJSON()
+	if err != nil {
+		return "dark"
+	}
+	if mode, ok := meta["mode"].(string); ok {
+		mode = strings.ToLower(strings.TrimSpace(mode))
+		if mode == "light" {
+			return "light"
+		}
+	}
+	return "dark"
+}
+
+func buildPolicyJSON(seedColor string) ([]byte, error) {
+	policy := map[string]string{
+		"BrowserThemeColor":  seedColor,
+		"BrowserColorScheme": "device",
+	}
+	return json.Marshal(policy)
+}
+
+func writePolicy(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+func fixPreferences(prefsFile, mode string) error {
 	data, err := os.ReadFile(prefsFile)
 	if err != nil {
 		data = []byte("{}")
 	}
 
 	var prefs map[string]interface{}
-	json.Unmarshal(data, &prefs)
+	if err := json.Unmarshal(data, &prefs); err != nil {
+		prefs = map[string]interface{}{}
+	}
 
 	cs := float64(2)
 	if mode == "light" {
@@ -134,6 +167,22 @@ func fixPreferences(prefsFile, mode string) {
 	extTheme["use_system"] = false
 	extTheme["use_custom"] = false
 
-	out, _ := json.Marshal(prefs)
-	os.WriteFile(prefsFile, out, 0644)
+	out, err := json.Marshal(prefs)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(prefsFile, out, 0644)
+}
+
+func normalizeHex(value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	trimmed = strings.TrimPrefix(trimmed, "#")
+	if len(trimmed) != 6 {
+		return "", false
+	}
+	if _, err := strconv.ParseUint(trimmed, 16, 32); err != nil {
+		return "", false
+	}
+	return "#" + strings.ToUpper(trimmed), true
 }
