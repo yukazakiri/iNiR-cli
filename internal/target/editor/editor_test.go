@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/snowarch/inir-cli/internal/config"
-	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/yukazakiri/inir-cli/internal/config"
+	"github.com/yukazakiri/inir-cli/internal/target"
 )
 
 func TestGenerateZedThemeJSONContainsPrimaryColor(t *testing.T) {

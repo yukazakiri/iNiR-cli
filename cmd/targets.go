@@ -3,7 +3,7 @@ package cmd
 import (
 	"sort"
 
-	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/yukazakiri/inir-cli/internal/target"
 )
 
 func allRegisteredTargets() []string {
