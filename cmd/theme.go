@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/snowarch/inir-cli/internal/config"
-	"github.com/snowarch/inir-cli/internal/color"
-	"github.com/snowarch/inir-cli/internal/template"
-	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/yukazakiri/inir-cli/internal/config"
+	"github.com/yukazakiri/inir-cli/internal/color"
+	"github.com/yukazakiri/inir-cli/internal/template"
+	"github.com/yukazakiri/inir-cli/internal/target"
 )
 
 var (

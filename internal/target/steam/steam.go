@@ -8,8 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/snowarch/inir-cli/internal/target"
-	"github.com/snowarch/inir-cli/internal/target/shared/colorutil"
+	"github.com/yukazakiri/inir-cli/internal/target"
 )
 
 type Applier struct{}

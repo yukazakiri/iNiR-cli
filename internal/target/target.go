@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/snowarch/inir-cli/internal/config"
+	"github.com/yukazakiri/inir-cli/internal/config"
 )
 
 type Context struct {

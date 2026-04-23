@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/snowarch/inir-cli/internal/color/material"
+	"github.com/yukazakiri/inir-cli/internal/color/material"
 )
 
 type TemplateEntry struct {

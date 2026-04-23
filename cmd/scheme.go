@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/snowarch/inir-cli/internal/presets"
-	"github.com/snowarch/inir-cli/internal/target"
+	"github.com/yukazakiri/inir-cli/internal/presets"
+	"github.com/yukazakiri/inir-cli/internal/target"
 )
 
 var (

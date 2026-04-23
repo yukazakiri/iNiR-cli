@@ -1,4 +1,4 @@
-module github.com/snowarch/inir-cli
+module github.com/yukazakiri/inir-cli
 
 go 1.24
 
