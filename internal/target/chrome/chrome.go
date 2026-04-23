@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/yukazakiri/inir-cli/internal/target"
+	"github.com/yukazakiri/inir-cli/internal/target/shared/colorutil"
 )
 
 type Applier struct{}
