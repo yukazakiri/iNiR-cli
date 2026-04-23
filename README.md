@@ -131,64 +131,66 @@ inir-cli/
 │       ├── gtk/gtk.go               # GTK3/4 + KDE theme generation
 │       ├── terminal/terminal.go     # ANSI sequence injection
 │       ├── chrome/chrome.go         # Chrome/Chromium/Brave GM3 policy
-│       ├── editor/editor.go         # Neovim + VS Code/Zed stubs
-│       ├── spicetify/spicetify.go   # Spotify (stub)
-│       ├── steam/steam.go           # Steam (stub)
-│       ├── vesktop/vesktop.go       # Vesktop/Discord (stub)
-│       ├── pear/pear.go             # YouTube Music desktop (stub)
-│       └── sddm/sddm.go            # SDDM login screen (stub)
+│       ├── editor/editor.go         # Neovim + VS Code/Zed/OpenCode theming
+│       ├── spicetify/spicetify.go   # Spicetify theme + CSS bridge + refresh/watch
+│       ├── steam/steam.go           # Adwaita-for-Steam CSS generation + deployment
+│       ├── vesktop/vesktop.go       # Vesktop theme CSS generation
+│       ├── pear/pear.go             # YouTube Music desktop CSS + config registration
+│       └── sddm/sddm.go             # SDDM color + wallpaper synchronization
 ```
 
 ## Target Implementation Status
 
-### Fully Implemented
+### Implemented (Current)
 
 | Target | Description |
 |---|---|
-| `terminals` | ANSI escape injection to `/dev/pts/*` |
-| `chrome` | Chrome/Chromium/Brave GM3 BrowserThemeColor policy |
+| `terminals` | ANSI injection + generated configs for Kitty, Alacritty, WezTerm, Ghostty, Foot, and Konsole + runtime reload hooks |
+| `chrome` | Chrome/Chromium/Brave BrowserThemeColor policy + profile preference normalization |
+| `editors` | VS Code family color customizations, Zed theme file generation, OpenCode theme JSON generation, Neovim spec generation |
+| `spicetify` | Spicetify theme generation (`color.ini` + CSS bridge), config wiring, refresh/watch trigger |
+| `steam` | Adwaita-for-Steam CSS generation + deployment to Steam/AdwSteam paths + libraryroot rewrite |
+| `vesktop` | Vesktop theme CSS generation from Material palette |
+| `pear-desktop` | YouTube Music desktop CSS generation + config registration + desktop override injection |
+| `sddm` | SDDM `theme.conf` color sync + wallpaper background copy |
 
-### Partially Implemented
+### Partially Implemented / Parity Gaps
 
 | Target | Description | Issue |
 |---|---|---|
-| `gtk-kde` | GTK3/4 CSS, kdeglobals, Darkly.colors, qt5ct/qt6ct | `fmt.Sprintf` format string mismatches corrupt GTK4 CSS, GTK3 CSS, and Darkly.colors output |
-| `editors` | Neovim color spec generation | VS Code theme generation is no-op; Zed reads palette but doesn't write |
+| `gtk-kde` | GTK3/4 CSS, kdeglobals, Darkly.colors, qt5ct/qt6ct generation | Works, but still needs stricter parity validation against upstream iNiR outputs |
+| `terminals` | Multi-terminal config generation | Coverage is strong but not yet full parity with upstream Python generator's complete terminal matrix |
+| `editors` | VS Code/Zed/OpenCode generation | Functional now, but does not yet fully replicate upstream full theme-generator richness |
 
-### Stub (Not Yet Implemented)
+### Not Yet Implemented (or only partially ported from shell scripts)
 
-| Target | Description | Reference Implementation |
-|---|---|---|
-| `spicetify` | Spotify via Spicetify + Sleek | `scripts/colors/apply-spicetify-theme.sh` (436 lines) |
-| `steam` | Steam Adwaita-for-Steam CSS + CDP live injection | `scripts/colors/modules/70-steam.sh` (248 lines) |
-| `vesktop` | Vesktop/Discord system24 palette | `scripts/colors/system24_palette.sh/py` |
-| `pear-desktop` | YouTube Music Catppuccin CSS + CDP injection | `scripts/colors/modules/80-pear-desktop.sh` (1069+ lines) |
-| `sddm` | SDDM login screen theme sync | `scripts/colors/modules/60-sddm.sh` |
+| Area | Remaining Work |
+|---|---|
+| Steam/Pear runtime behavior | CDP live-injection parity from shell scripts is not fully ported |
+| Vesktop/Discord | system24-style full parity behavior still incomplete |
+| Generator fidelity | Some script-level edge cases and output normalization still need parity passes |
 
 ## TODO
 
 ### High Priority
 
-- [ ] **Fix GTK target** — resolve `fmt.Sprintf` format string mismatches in `generateGTK4CSS`, `generateGTK3CSS`, `generateDarklyColors`
-- [ ] **VS Code theme generation** — port `scripts/colors/vscode/theme_generator.py` (1067 lines) to Go; existing `vscode_themegen` in the iNiR repo is a starting point
-- [ ] **Zed theme generation** — port `scripts/colors/zed/theme_generator.py` (1029 lines) to Go; existing `zed_themegen` (1110 lines) in iNiR repo is a starting point
-- [ ] **Terminal config generation** — port `scripts/colors/generate_terminal_configs.py` (1514 lines) for 11 terminal emulators (Kitty, Alacritty, WezTerm, Konsole, etc.)
+- [ ] **GTK/KDE parity hardening** — add output-level regression tests and verify generated GTK/KDE artifacts against upstream iNiR references
+- [ ] **Terminal matrix parity** — extend terminal writers to match the full upstream terminal coverage and edge-case formatting
+- [ ] **Editor generator fidelity** — deepen VS Code/Zed/OpenCode generation to match upstream theme generator richness
 
 ### Medium Priority
 
-- [ ] **Spicetify** — port `apply-spicetify-theme.sh` to Go
-- [ ] **Steam** — port Steam CSS patching + CDP injection to Go
-- [ ] **Vesktop/Discord** — port `system24_palette.py` to Go
-- [ ] **Pear Desktop** — port YouTube Music theming + CDP to Go
-- [ ] **SDDM** — port SDDM theme sync to Go
+- [ ] **Steam live runtime parity** — add missing CDP/live-application behavior from legacy scripts
+- [ ] **Pear Desktop live runtime parity** — add missing CDP/live-application behavior from legacy scripts
+- [ ] **Vesktop/Discord parity expansion** — complete system24-style behavior and compatibility handling
+- [ ] **Target-level golden tests** — add snapshot/golden tests for generated CSS/JSON outputs per target
 
 ### Low Priority
 
 - [ ] **Template rendering** — test and validate `{{colors.TOKEN.MODE.hex}}` template system against iNiR templates
 - [ ] **Soften colors** — implement HSL saturation reduction for preset themes (currently only in QML)
-- [ ] **OpenCode theme generator** — port `scripts/colors/opencode/theme_generator.py` (304 lines)
 - [ ] **Image format support** — add WebP and AVIF decoding
-- [ ] **Unit tests** — add tests for color science, scheme generation, terminal harmonization
+- [ ] **Color science/unit test expansion** — broaden tests for scheme generation, harmonization, and fallback handling
 - [ ] **Man page / shell completions** — generate from cobra
 
 ## Credits
