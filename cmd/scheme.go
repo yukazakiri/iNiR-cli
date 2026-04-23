@@ -164,7 +164,7 @@ func applySchemeTargets(outputDir string) error {
 		OutputDir:    outputDir,
 	}
 
-	targets := []string{"gtk-kde", "terminals", "editors", "chrome", "spicetify", "sddm", "steam", "vesktop", "pear-desktop"}
+	targets := allSchemeTargets()
 	for _, t := range targets {
 		applier := target.GetApplier(t)
 		if applier == nil {
@@ -175,6 +175,21 @@ func applySchemeTargets(outputDir string) error {
 		}
 	}
 	return nil
+}
+
+func allSchemeTargets() []string {
+	return []string{
+		"gtk-kde",
+		"terminals",
+		"editors",
+		"zed",
+		"chrome",
+		"spicetify",
+		"sddm",
+		"steam",
+		"vesktop",
+		"pear-desktop",
+	}
 }
 
 func generatePresetTerminalColors(c *presets.PresetColors, harmony, termSat, termBri float64) map[string]string {
