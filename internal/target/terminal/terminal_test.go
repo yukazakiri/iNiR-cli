@@ -153,7 +153,7 @@ func TestApplyRuntimeHooksTriggersReloadCommands(t *testing.T) {
 
 	lookPath = func(file string) (string, error) {
 		switch file {
-		case "kitty", "foot":
+		case "kitty", "foot", "qdbus6":
 			return "/usr/bin/" + file, nil
 		default:
 			return "", os.ErrNotExist
@@ -195,6 +195,9 @@ func TestApplyRuntimeHooksTriggersReloadCommands(t *testing.T) {
 	if !strings.Contains(joined, "pkill -USR1 foot") {
 		t.Fatalf("expected foot reload command, got: %s", joined)
 	}
+	if !strings.Contains(joined, "qdbus6 org.kde.konsole") {
+		t.Fatalf("expected konsole refresh command, got: %s", joined)
+	}
 
 	alacrittyData, err := os.ReadFile(alacrittyMain)
 	if err != nil {
@@ -202,5 +205,77 @@ func TestApplyRuntimeHooksTriggersReloadCommands(t *testing.T) {
 	}
 	if !strings.Contains(string(alacrittyData), `import = ["~/.config/alacritty/colors.toml"]`) {
 		t.Fatalf("missing import line in alacritty.toml: %s", string(alacrittyData))
+	}
+}
+
+func TestApplyWritesKonsoleSchemeWhenEnabled(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, "config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(tmp, "data"))
+
+	outputDir := filepath.Join(tmp, "generated")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		t.Fatalf("mkdir output dir: %v", err)
+	}
+
+	terminalPath := filepath.Join(outputDir, "terminal.json")
+	terminalJSON := `{"term0":"#101010","term1":"#ff0000","term2":"#00ff00","term3":"#ffff00","term4":"#0000ff","term5":"#ff00ff","term6":"#00ffff","term7":"#f0f0f0","term8":"#202020","term9":"#ff1111","term10":"#11ff11","term11":"#ffff11","term12":"#1111ff","term13":"#ff11ff","term14":"#11ffff","term15":"#ffffff"}`
+	if err := os.WriteFile(terminalPath, []byte(terminalJSON), 0644); err != nil {
+		t.Fatalf("write terminal.json: %v", err)
+	}
+
+	palettePath := filepath.Join(outputDir, "palette.json")
+	if err := os.WriteFile(palettePath, []byte(`{"primary":"#8caaee"}`), 0644); err != nil {
+		t.Fatalf("write palette.json: %v", err)
+	}
+
+	originalInject := injectAllPTS
+	originalLookPath := lookPath
+	originalRunCommand := runCommand
+	t.Cleanup(func() {
+		injectAllPTS = originalInject
+		lookPath = originalLookPath
+		runCommand = originalRunCommand
+	})
+	injectAllPTS = func(_ string) {}
+	lookPath = func(file string) (string, error) { return "", os.ErrNotExist }
+	runCommand = func(name string, args ...string) error { return nil }
+
+	ctx := &target.Context{
+		Config: &config.Config{
+			WallpaperTheming: config.WallpaperTheming{
+				EnableTerminal: true,
+				Terminals: map[string]bool{
+					"kitty":     false,
+					"alacritty": false,
+					"wezterm":   false,
+					"ghostty":   false,
+					"foot":      false,
+					"konsole":   true,
+				},
+			},
+		},
+		OutputDir:    outputDir,
+		TerminalPath: terminalPath,
+		PalettePath:  palettePath,
+		ColorsPath:   palettePath,
+	}
+
+	var a Applier
+	if err := a.Apply(ctx); err != nil {
+		t.Fatalf("apply failed: %v", err)
+	}
+
+	path := filepath.Join(tmp, "data", "konsole", "ii-auto.colorscheme")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("konsole colorscheme missing: %v", err)
+	}
+
+	if !strings.Contains(string(data), "[General]") {
+		t.Fatalf("konsole colorscheme missing header: %s", string(data))
+	}
+	if !strings.Contains(string(data), "Color=16,16,16") {
+		t.Fatalf("konsole colorscheme missing converted RGB entries: %s", string(data))
 	}
 }

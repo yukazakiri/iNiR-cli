@@ -145,6 +145,13 @@ func terminalWriters() []terminalWriter {
 			},
 			render: renderFootConfig,
 		},
+		{
+			id: "konsole",
+			path: func(ctx *target.Context) string {
+				return filepath.Join(ctx.XDGDataHome(), "konsole", "ii-auto.colorscheme")
+			},
+			render: renderKonsoleConfig,
+		},
 	}
 }
 
@@ -401,6 +408,71 @@ bright7=%s
 	)
 }
 
+func renderKonsoleConfig(_ map[string]string, terminal map[string]string) string {
+	return fmt.Sprintf(`[General]
+Description=iNiR Auto
+Opacity=1
+
+[Background]
+Color=%s
+
+[Foreground]
+Color=%s
+
+[Color0]
+Color=%s
+[Color1]
+Color=%s
+[Color2]
+Color=%s
+[Color3]
+Color=%s
+[Color4]
+Color=%s
+[Color5]
+Color=%s
+[Color6]
+Color=%s
+[Color7]
+Color=%s
+[Color0Intense]
+Color=%s
+[Color1Intense]
+Color=%s
+[Color2Intense]
+Color=%s
+[Color3Intense]
+Color=%s
+[Color4Intense]
+Color=%s
+[Color5Intense]
+Color=%s
+[Color6Intense]
+Color=%s
+[Color7Intense]
+Color=%s
+`,
+		toRGB(pickTerminal(terminal, "term0", "#1e1e2e")),
+		toRGB(pickTerminal(terminal, "term15", "#cdd6f4")),
+		toRGB(pickTerminal(terminal, "term0", "#1e1e2e")),
+		toRGB(pickTerminal(terminal, "term1", "#f38ba8")),
+		toRGB(pickTerminal(terminal, "term2", "#a6e3a1")),
+		toRGB(pickTerminal(terminal, "term3", "#f9e2af")),
+		toRGB(pickTerminal(terminal, "term4", "#89b4fa")),
+		toRGB(pickTerminal(terminal, "term5", "#cba6f7")),
+		toRGB(pickTerminal(terminal, "term6", "#94e2d5")),
+		toRGB(pickTerminal(terminal, "term7", "#cdd6f4")),
+		toRGB(pickTerminal(terminal, "term8", "#585b70")),
+		toRGB(pickTerminal(terminal, "term9", "#f38ba8")),
+		toRGB(pickTerminal(terminal, "term10", "#a6e3a1")),
+		toRGB(pickTerminal(terminal, "term11", "#f9e2af")),
+		toRGB(pickTerminal(terminal, "term12", "#89b4fa")),
+		toRGB(pickTerminal(terminal, "term13", "#cba6f7")),
+		toRGB(pickTerminal(terminal, "term14", "#94e2d5")),
+		toRGB(pickTerminal(terminal, "term15", "#ffffff")),
+	)
+}
+
 func ensureLineInFile(path, line string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
@@ -448,6 +520,12 @@ func applyTerminalRuntimeHooks(ctx *target.Context, enabled map[string]bool) {
 	if isTerminalEnabled(enabled, "foot") {
 		if _, err := lookPath("foot"); err == nil {
 			_ = runCommand("pkill", "-USR1", "foot")
+		}
+	}
+
+	if isTerminalEnabled(enabled, "konsole") {
+		if _, err := lookPath("qdbus6"); err == nil {
+			_ = runCommand("qdbus6", "org.kde.konsole")
 		}
 	}
 }
@@ -502,4 +580,16 @@ func stripHash(value string) string {
 		return "000000"
 	}
 	return strings.TrimPrefix(normalized, "#")
+}
+
+func toRGB(value string) string {
+	normalized, ok := normalizeHex(value)
+	if !ok {
+		return "0,0,0"
+	}
+	hex := strings.TrimPrefix(normalized, "#")
+	r, _ := strconv.ParseUint(hex[0:2], 16, 8)
+	g, _ := strconv.ParseUint(hex[2:4], 16, 8)
+	b, _ := strconv.ParseUint(hex[4:6], 16, 8)
+	return fmt.Sprintf("%d,%d,%d", r, g, b)
 }
