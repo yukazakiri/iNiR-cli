@@ -104,3 +104,47 @@ func TestEditorApplierWritesVSCodeCustomizations(t *testing.T) {
 		t.Fatalf("settings missing terminal palette customizations: %s", string(content))
 	}
 }
+
+func TestEditorApplierWritesOpenCodeThemeWhenEnabled(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, "config"))
+
+	palettePath := filepath.Join(tmp, "palette.json")
+	terminalPath := filepath.Join(tmp, "terminal.json")
+	if err := os.WriteFile(palettePath, []byte(`{"primary":"#8caaee","on_surface":"#dce0e8","surface":"#1e1e2e","surface_container":"#313244"}`), 0644); err != nil {
+		t.Fatalf("write palette: %v", err)
+	}
+	if err := os.WriteFile(terminalPath, []byte(`{"term1":"#f38ba8","term2":"#a6e3a1","term3":"#f9e2af","term4":"#89b4fa"}`), 0644); err != nil {
+		t.Fatalf("write terminal: %v", err)
+	}
+
+	ctx := &target.Context{
+		Config: &config.Config{
+			WallpaperTheming: config.WallpaperTheming{
+				EnableVSCode:   false,
+				EnableOpenCode: true,
+			},
+		},
+		PalettePath:  palettePath,
+		ColorsPath:   palettePath,
+		TerminalPath: terminalPath,
+	}
+
+	var a Applier
+	if err := a.Apply(ctx); err != nil {
+		t.Fatalf("editor apply failed: %v", err)
+	}
+
+	themePath := filepath.Join(tmp, "config", "opencode", "themes", "inir.json")
+	content, err := os.ReadFile(themePath)
+	if err != nil {
+		t.Fatalf("expected opencode theme file: %v", err)
+	}
+
+	if !strings.Contains(string(content), "\"$schema\": \"https://opencode.ai/theme.json\"") {
+		t.Fatalf("opencode theme missing schema: %s", string(content))
+	}
+	if !strings.Contains(string(content), "\"m3Primary\": \"#8caaee\"") {
+		t.Fatalf("opencode theme missing mapped primary color: %s", string(content))
+	}
+}
