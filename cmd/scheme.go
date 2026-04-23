@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yukazakiri/inir-cli/internal/presets"
@@ -18,6 +20,7 @@ var (
 	flagSchemeOutputDir  string
 	flagSchemeList       bool
 	flagSchemeApply      bool
+	flagSchemeRandom     bool
 	flagSchemeHarmony    float64
 	flagSchemeTermSat    float64
 	flagSchemeTermBri    float64
@@ -38,6 +41,7 @@ func init() {
 	schemeCmd.Flags().StringVar(&flagSchemeOutputDir, "output", "", "Output directory for generated files")
 	schemeCmd.Flags().BoolVar(&flagSchemeList, "list", false, "List all available theme presets")
 	schemeCmd.Flags().BoolVar(&flagSchemeApply, "apply", false, "Apply theme to all targets after generating")
+	schemeCmd.Flags().BoolVar(&flagSchemeRandom, "random", false, "Pick and apply a random preset theme")
 	schemeCmd.Flags().Float64Var(&flagSchemeHarmony, "harmony", 0.40, "Terminal color harmony (0-1)")
 	schemeCmd.Flags().Float64Var(&flagSchemeTermSat, "term-saturation", 0.65, "Terminal color saturation (0-1)")
 	schemeCmd.Flags().Float64Var(&flagSchemeTermBri, "term-brightness", 0.60, "Terminal color brightness (0-1)")
@@ -50,14 +54,19 @@ func runScheme(cmd *cobra.Command, args []string) error {
 		return listPresets()
 	}
 
-	if len(args) == 0 {
+	if len(args) == 0 && !flagSchemeRandom {
 		return fmt.Errorf("theme name required (use --list to see available themes)")
 	}
 
-	themeName := args[0]
-	preset := presets.GetPreset(themeName)
-	if preset == nil {
-		return fmt.Errorf("unknown theme: %q (use --list to see available themes)", themeName)
+	themeName := ""
+	if len(args) > 0 {
+		themeName = args[0]
+	}
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	preset, err := resolveSchemePreset(themeName, flagSchemeRandom, rng)
+	if err != nil {
+		return err
 	}
 
 	outputDir := flagSchemeOutputDir
@@ -127,6 +136,26 @@ func runScheme(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func resolveSchemePreset(themeName string, randomPick bool, rng *rand.Rand) (*presets.Preset, error) {
+	if randomPick {
+		if len(presets.Presets) == 0 {
+			return nil, fmt.Errorf("no presets available")
+		}
+		if rng == nil {
+			rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+		}
+		picked := presets.Presets[rng.Intn(len(presets.Presets))]
+		return &picked, nil
+	}
+
+	preset := presets.GetPreset(themeName)
+	if preset == nil {
+		return nil, fmt.Errorf("unknown theme: %q (use --list to see available themes)", themeName)
+	}
+
+	return preset, nil
 }
 
 func listPresets() error {

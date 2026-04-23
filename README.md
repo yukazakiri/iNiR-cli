@@ -17,6 +17,14 @@ It can also apply any of 44 built-in static theme presets (Catppuccin, Gruvbox, 
 go build -o bin/inir-cli .
 ```
 
+One-line local install (builds to `~/.local/bin/inir-cli` and makes it executable):
+
+```bash
+mkdir -p ~/.local/bin && go build -o ~/.local/bin/inir-cli . && chmod +x ~/.local/bin/inir-cli
+```
+
+Make sure `~/.local/bin` is on your `PATH`.
+
 Requires Go 1.24+.
 
 ## Usage
@@ -39,6 +47,9 @@ inir-cli scheme catppuccin-mocha
 
 # Apply theme and apply to all desktop targets
 inir-cli scheme tokyo-night --apply
+
+# Pick and apply a random theme preset
+inir-cli scheme --random --apply
 
 # Apply to a custom output directory
 inir-cli scheme nord --output ~/.local/state/quickshell/user/generated
@@ -68,7 +79,7 @@ Reads from `~/.config/illogical-impulse/config.json` by default (same config as 
 | Command | Description |
 |---|---|
 | `generate` | Generate color palette from wallpaper image or seed color |
-| `scheme` | Apply a built-in static theme preset (44 themes) |
+| `scheme` | Apply a built-in static theme preset (44 themes), including `--random` |
 | `theme generate` | Full pipeline: generate palette from wallpaper |
 | `theme apply [targets...]` | Apply generated colors to specified targets |
 | `auto-detect [image]` | Detect the best Material You scheme variant for an image |
