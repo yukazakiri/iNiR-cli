@@ -162,12 +162,19 @@ button:active, modelbutton:active { background-color: %s !important; color: %s !
 		surfaceContainerLow, onSurface,
 		bg, fg, bg, bg,
 		surfaceContainerHighest, onSurface,
-		bg, bg, fg, fg,
+		bg,
+		bg, fg,
+		fg,
+		rowHoverBg,
+		rowActiveBg, fg,
+		bg,
 		surfaceContainer, onSurface,
-		rowHoverBg, rowActiveBg, fg,
+		rowHoverBg,
+		rowActiveBg, fg,
 		onSurface,
 		primary, primary,
-		rowHoverBg, rowActiveBg, fg)
+		rowHoverBg,
+		rowActiveBg, fg)
 }
 
 func generateGTK3CSS(bg, fg, primary, onPrimary, surfaceContainer, surfaceContainerLow,
@@ -212,10 +219,15 @@ entry:focus { border-color: alpha(%s, 0.60) !important; box-shadow: 0 0 0 1px al
 		bg, fg,
 		surfaceContainerLow, onSurface,
 		bg, fg, bg, bg,
-		bg, bg, fg, fg,
+		bg,
+		bg, fg,
+		fg,
+		rowHoverBg,
+		rowActiveBg, rowSelectedFg,
 		surfaceContainer, onSurface,
 		surfaceContainer, onSurface,
-		rowHoverBg, rowHoverBg,
+		rowHoverBg,
+		rowHoverBg,
 		rowActiveBg, rowSelectedFg,
 		primary, primary)
 }
@@ -301,26 +313,26 @@ shadeSortColumn=true
 contrast=0
 
 [Colors:Window]
-BackgroundNormal=%s,%s,%s
-ForegroundNormal=%s,%s,%s
-DecorationFocus=%s,%s,%s
+BackgroundNormal=%s
+ForegroundNormal=%s
+DecorationFocus=%s
 
 [Colors:View]
-BackgroundNormal=%s,%s,%s
-ForegroundNormal=%s,%s,%s
-DecorationFocus=%s,%s,%s
+BackgroundNormal=%s
+ForegroundNormal=%s
+DecorationFocus=%s
 
 [Colors:Button]
-BackgroundNormal=%s,%s,%s
-ForegroundNormal=%s,%s,%s
+BackgroundNormal=%s
+ForegroundNormal=%s
 
 [Colors:Selection]
-BackgroundNormal=%s,%s,%s
-ForegroundNormal=%s,%s,%s
+BackgroundNormal=%s
+ForegroundNormal=%s
 `, hexToRGBComma(bg), hexToRGBComma(fg), hexToRGBComma(primary),
 		hexToRGBComma(bg), hexToRGBComma(fg), hexToRGBComma(primary),
-		hexToRGBComma(surface), hexToRGBComma(fg), hexToRGBComma(primary),
-		hexToRGBComma(bg), hexToRGBComma(fg), hexToRGBComma(primary))
+		hexToRGBComma(surface), hexToRGBComma(fg),
+		hexToRGBComma(bg), hexToRGBComma(fg))
 }
 
 func writeQt6ct(darklyPath string, ctx *target.Context) {

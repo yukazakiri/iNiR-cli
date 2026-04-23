@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,8 +13,40 @@ type Applier struct{}
 type ZedApplier struct{}
 
 func (a *Applier) Apply(ctx *target.Context) error {
-	if !ctx.Config.WallpaperTheming.EnableVSCode {
-		return nil
+	if ctx == nil || ctx.Config == nil {
+		return fmt.Errorf("editor apply: nil context or config")
+	}
+
+	needsPalette := ctx.Config.WallpaperTheming.EnableVSCode || ctx.Config.WallpaperTheming.EnableOpenCode
+	palette := map[string]string{}
+	terminal := map[string]string{}
+
+	if needsPalette {
+		loadedPalette, err := ctx.ReadPaletteJSON()
+		if err != nil {
+			loadedPalette, err = ctx.ReadColorsJSON()
+			if err != nil {
+				return err
+			}
+		}
+		palette = loadedPalette
+
+		loadedTerminal, err := ctx.ReadTerminalJSON()
+		if err == nil {
+			terminal = loadedTerminal
+		}
+	}
+
+	if ctx.Config.WallpaperTheming.EnableVSCode {
+		if err := applyVSCodeCustomizations(ctx, palette, terminal, ctx.Config.WallpaperTheming.VscodeEditors); err != nil {
+			return err
+		}
+	}
+
+	if ctx.Config.WallpaperTheming.EnableOpenCode {
+		if err := applyOpenCodeTheme(ctx, palette, terminal); err != nil {
+			return err
+		}
 	}
 
 	neovimEnabled := ctx.Config.WallpaperTheming.EnableNeovim
@@ -24,16 +57,243 @@ func (a *Applier) Apply(ctx *target.Context) error {
 	return nil
 }
 
+type vscodeFork struct {
+	ConfigKey string
+	DirName   string
+}
+
+func vscodeForks() []vscodeFork {
+	return []vscodeFork{
+		{ConfigKey: "code", DirName: "Code"},
+		{ConfigKey: "codium", DirName: "VSCodium"},
+		{ConfigKey: "codeOss", DirName: "Code - OSS"},
+		{ConfigKey: "codeInsiders", DirName: "Code - Insiders"},
+		{ConfigKey: "cursor", DirName: "Cursor"},
+		{ConfigKey: "windsurf", DirName: "Windsurf"},
+		{ConfigKey: "windsurfNext", DirName: "Windsurf - Next"},
+		{ConfigKey: "qoder", DirName: "Qoder"},
+		{ConfigKey: "antigravity", DirName: "Antigravity"},
+		{ConfigKey: "positron", DirName: "Positron"},
+		{ConfigKey: "voidEditor", DirName: "Void"},
+		{ConfigKey: "melty", DirName: "Melty"},
+		{ConfigKey: "pearai", DirName: "PearAI"},
+		{ConfigKey: "aide", DirName: "Aide"},
+	}
+}
+
+func applyVSCodeCustomizations(ctx *target.Context, palette map[string]string, terminal map[string]string, enabled map[string]bool) error {
+	for _, fork := range vscodeForks() {
+		if !isForkEnabled(enabled, fork.ConfigKey) {
+			continue
+		}
+
+		settingsPath := filepath.Join(ctx.XDGConfigHome(), fork.DirName, "User", "settings.json")
+		if err := updateVSCodeSettings(settingsPath, palette, terminal); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func isForkEnabled(enabled map[string]bool, key string) bool {
+	if len(enabled) == 0 {
+		return true
+	}
+	value, ok := enabled[key]
+	if !ok {
+		return true
+	}
+	return value
+}
+
+func updateVSCodeSettings(settingsPath string, palette map[string]string, terminal map[string]string) error {
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0755); err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		data = []byte("{}")
+	}
+
+	var settings map[string]interface{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		settings = map[string]interface{}{}
+	}
+
+	settings["workbench.colorTheme"] = "Default Dark+"
+	settings["workbench.colorCustomizations"] = buildVSCodeColorCustomizations(palette, terminal)
+
+	encoded, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(settingsPath, append(encoded, '\n'), 0644)
+}
+
+func buildVSCodeColorCustomizations(palette map[string]string, terminal map[string]string) map[string]interface{} {
+	pickPalette := func(key, fallback string) string {
+		if v, ok := palette[key]; ok && v != "" {
+			return v
+		}
+		return fallback
+	}
+	pickTerminal := func(key, fallback string) string {
+		if v, ok := terminal[key]; ok && v != "" {
+			return v
+		}
+		return fallback
+	}
+
+	return map[string]interface{}{
+		"editor.background":          pickPalette("surface_container_low", "#181825"),
+		"editor.foreground":          pickPalette("on_surface", "#cdd6f4"),
+		"editorCursor.foreground":    pickPalette("primary", "#cba6f7"),
+		"activityBar.background":     pickPalette("surface", "#1e1e2e"),
+		"sideBar.background":         pickPalette("surface", "#1e1e2e"),
+		"statusBar.background":       pickPalette("surface_container", "#313244"),
+		"statusBar.foreground":       pickPalette("on_surface", "#cdd6f4"),
+		"titleBar.activeBackground":  pickPalette("surface_container", "#313244"),
+		"titleBar.activeForeground":  pickPalette("on_surface", "#cdd6f4"),
+		"terminal.background":        pickPalette("surface", "#1e1e2e"),
+		"terminal.foreground":        pickPalette("on_surface", "#cdd6f4"),
+		"terminal.ansiBlack":         pickTerminal("term0", "#1e1e2e"),
+		"terminal.ansiRed":           pickTerminal("term1", "#f38ba8"),
+		"terminal.ansiGreen":         pickTerminal("term2", "#a6e3a1"),
+		"terminal.ansiYellow":        pickTerminal("term3", "#f9e2af"),
+		"terminal.ansiBlue":          pickTerminal("term4", "#89b4fa"),
+		"terminal.ansiMagenta":       pickTerminal("term5", "#cba6f7"),
+		"terminal.ansiCyan":          pickTerminal("term6", "#94e2d5"),
+		"terminal.ansiWhite":         pickTerminal("term7", "#cdd6f4"),
+		"terminal.ansiBrightBlack":   pickTerminal("term8", "#585b70"),
+		"terminal.ansiBrightRed":     pickTerminal("term9", "#f38ba8"),
+		"terminal.ansiBrightGreen":   pickTerminal("term10", "#a6e3a1"),
+		"terminal.ansiBrightYellow":  pickTerminal("term11", "#f9e2af"),
+		"terminal.ansiBrightBlue":    pickTerminal("term12", "#89b4fa"),
+		"terminal.ansiBrightMagenta": pickTerminal("term13", "#cba6f7"),
+		"terminal.ansiBrightCyan":    pickTerminal("term14", "#94e2d5"),
+		"terminal.ansiBrightWhite":   pickTerminal("term15", "#ffffff"),
+	}
+}
+
+func applyOpenCodeTheme(ctx *target.Context, palette map[string]string, terminal map[string]string) error {
+	themesDir := filepath.Join(ctx.XDGConfigHome(), "opencode", "themes")
+	if err := os.MkdirAll(themesDir, 0755); err != nil {
+		return err
+	}
+
+	content, err := generateOpenCodeThemeJSON(palette, terminal)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filepath.Join(themesDir, "inir.json"), content, 0644)
+}
+
+func generateOpenCodeThemeJSON(palette map[string]string, terminal map[string]string) ([]byte, error) {
+	pickPalette := func(key, fallback string) string {
+		if v, ok := palette[key]; ok && v != "" {
+			return v
+		}
+		return fallback
+	}
+	pickTerminal := func(key, fallback string) string {
+		if v, ok := terminal[key]; ok && v != "" {
+			return v
+		}
+		return fallback
+	}
+
+	theme := map[string]interface{}{
+		"$schema": "https://opencode.ai/theme.json",
+		"defs": map[string]interface{}{
+			"m3Primary":          pickPalette("primary", "#8caaee"),
+			"m3Secondary":        pickPalette("secondary", "#bb9af7"),
+			"m3Surface":          pickPalette("surface", "#1e1e2e"),
+			"m3SurfaceContainer": pickPalette("surface_container", "#313244"),
+			"m3OnSurface":        pickPalette("on_surface", "#dce0e8"),
+			"m3OnSurfaceVariant": pickPalette("on_surface_variant", "#a6adc8"),
+			"m3Outline":          pickPalette("outline", "#585b70"),
+			"m3Error":            pickPalette("error", "#f38ba8"),
+			"ansiRed":            pickTerminal("term1", "#f38ba8"),
+			"ansiGreen":          pickTerminal("term2", "#a6e3a1"),
+			"ansiBlue":           pickTerminal("term4", "#89b4fa"),
+			"ansiYellow":         pickTerminal("term3", "#f9e2af"),
+		},
+		"theme": map[string]interface{}{
+			"primary":           "m3Primary",
+			"secondary":         "m3Secondary",
+			"accent":            "m3Primary",
+			"error":             "m3Error",
+			"warning":           "ansiYellow",
+			"success":           "ansiGreen",
+			"info":              "ansiBlue",
+			"text":              "m3OnSurface",
+			"textMuted":         "m3OnSurfaceVariant",
+			"background":        "m3Surface",
+			"backgroundPanel":   "m3SurfaceContainer",
+			"backgroundElement": "m3SurfaceContainer",
+			"border":            "m3Outline",
+			"borderActive":      "m3Primary",
+			"syntaxKeyword":     "ansiBlue",
+			"syntaxString":      "ansiGreen",
+			"syntaxNumber":      "ansiYellow",
+			"syntaxComment":     "m3OnSurfaceVariant",
+			"diffAdded":         "ansiGreen",
+			"diffRemoved":       "ansiRed",
+			"diffContext":       "m3OnSurfaceVariant",
+		},
+	}
+
+	b, err := json.MarshalIndent(theme, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return append(b, '\n'), nil
+}
+
 func (a *ZedApplier) Apply(ctx *target.Context) error {
+	if ctx == nil || ctx.Config == nil {
+		return fmt.Errorf("zed apply: nil context or config")
+	}
+
 	if !ctx.Config.WallpaperTheming.EnableZed {
 		return nil
 	}
 
 	colors, err := ctx.ReadPaletteJSON()
 	if err != nil {
+		colors, err = ctx.ReadColorsJSON()
+		if err != nil {
+			return err
+		}
+	}
+
+	themesDir := filepath.Join(ctx.XDGConfigHome(), "zed", "themes")
+	if err := os.MkdirAll(themesDir, 0755); err != nil {
+		return err
+	}
+	outputPath := filepath.Join(themesDir, "ii-theme.json")
+
+	content, err := generateZedThemeJSON(colors)
+	if err != nil {
 		return err
 	}
 
+	if err := os.WriteFile(outputPath, content, 0644); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func generateZedThemeJSON(colors map[string]string) ([]byte, error) {
 	pick := func(key, fallback string) string {
 		if v, ok := colors[key]; ok && v != "" {
 			return v
@@ -41,9 +301,35 @@ func (a *ZedApplier) Apply(ctx *target.Context) error {
 		return fallback
 	}
 
-	_ = pick
+	theme := map[string]interface{}{
+		"$schema": "https://zed.dev/schema/themes/v0.2.0.json",
+		"name":    "iNiR",
+		"author":  "inir-cli",
+		"themes": []interface{}{
+			map[string]interface{}{
+				"name":       "iNiR Dark",
+				"appearance": "dark",
+				"style": map[string]interface{}{
+					"background":            pick("surface", "#1e1e2e"),
+					"surface.background":    pick("surface_container", "#313244"),
+					"text":                  pick("on_surface", "#cdd6f4"),
+					"text.muted":            pick("on_surface_variant", "#a6adc8"),
+					"editor.background":     pick("surface_container_low", "#181825"),
+					"editor.foreground":     pick("on_surface", "#cdd6f4"),
+					"panel.background":      pick("surface", "#1e1e2e"),
+					"tab.active_background": pick("surface_container_high", "#45475a"),
+					"border.focused":        pick("primary", "#cba6f7"),
+					"icon.accent":           pick("primary", "#cba6f7"),
+				},
+			},
+		},
+	}
 
-	return nil
+	b, err := json.MarshalIndent(theme, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
 }
 
 func generateNeovimSpec(ctx *target.Context) {
