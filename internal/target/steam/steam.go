@@ -22,9 +22,6 @@ var (
 		cmd := exec.Command(name, args...)
 		return cmd.CombinedOutput()
 	}
-	isProcessRunning = func(name string) bool {
-		return exec.Command("pgrep", "-x", name).Run() == nil
-	}
 )
 
 func (a *Applier) Apply(ctx *target.Context) error {
@@ -36,29 +33,25 @@ func (a *Applier) Apply(ctx *target.Context) error {
 		return nil
 	}
 
-	adwCommand, ok := resolveAdwSteamCommand()
-	if !ok {
+	adwCmd, found := resolveAdwSteamCommand()
+	if !found {
 		return nil
 	}
 
-	cssPath, err := resolveSteamCSS(ctx)
+	cssPath, err := resolveSteamCSSSource(ctx)
 	if err != nil {
-		return fmt.Errorf("resolve steam css: %w", err)
+		return err
 	}
 
 	steamDirs := steamInstallDirs(ctx)
 	if !skinInstalled(steamDirs) {
-		if err := bootstrapSkin(adwCommand); err != nil {
-			fmt.Fprintf(os.Stderr, "[inir-cli] steam bootstrap skipped: %v\n", err)
+		if err := bootstrapSkin(adwCmd); err != nil {
+			return nil
 		}
 	}
 
 	if _, err := deployCSS(ctx, cssPath, steamDirs); err != nil {
-		return fmt.Errorf("deploy steam css: %w", err)
-	}
-
-	if isProcessRunning("steamwebhelper") {
-		fmt.Fprintf(os.Stderr, "[inir-cli] Steam running: CSS deployed, restart may be required for full refresh\n")
+		return err
 	}
 
 	return nil
@@ -79,17 +72,16 @@ func resolveAdwSteamCommand() ([]string, bool) {
 	return nil, false
 }
 
-func bootstrapSkin(command []string) error {
-	if len(command) == 0 {
+func bootstrapSkin(cmd []string) error {
+	if len(cmd) == 0 {
 		return fmt.Errorf("empty adwsteam command")
 	}
-	args := append([]string{}, command[1:]...)
-	args = append(args, "-i")
-	_, err := runCommand(command[0], args...)
+	args := append(append([]string{}, cmd[1:]...), "-i")
+	_, err := runCommand(cmd[0], args...)
 	return err
 }
 
-func resolveSteamCSS(ctx *target.Context) (string, error) {
+func resolveSteamCSSSource(ctx *target.Context) (string, error) {
 	cssPath := filepath.Join(ctx.OutputDir, "steam-colortheme.css")
 	if _, err := os.Stat(cssPath); err == nil {
 		return cssPath, nil
@@ -99,16 +91,16 @@ func resolveSteamCSS(ctx *target.Context) (string, error) {
 	if err != nil {
 		colors, err = ctx.ReadColorsJSON()
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("read steam colors: %w", err)
 		}
 	}
 
 	if err := os.MkdirAll(ctx.OutputDir, 0755); err != nil {
-		return "", err
+		return "", fmt.Errorf("create steam output dir: %w", err)
 	}
 
 	if err := os.WriteFile(cssPath, []byte(generateSteamCSS(colors)), 0644); err != nil {
-		return "", err
+		return "", fmt.Errorf("write generated steam css: %w", err)
 	}
 
 	return cssPath, nil
@@ -125,7 +117,7 @@ func steamInstallDirs(ctx *target.Context) []string {
 
 func skinInstalled(steamDirs []string) bool {
 	for _, dir := range steamDirs {
-		if _, err := os.Stat(filepath.Join(dir, "steamui", "adwaita", "colorthemes")); err == nil {
+		if info, err := os.Stat(filepath.Join(dir, "steamui", "adwaita", "colorthemes")); err == nil && info.IsDir() {
 			return true
 		}
 	}
@@ -133,42 +125,65 @@ func skinInstalled(steamDirs []string) bool {
 }
 
 func deployCSS(ctx *target.Context, cssPath string, steamDirs []string) (int, error) {
-	xdgCache := os.Getenv("XDG_CACHE_HOME")
-	if xdgCache == "" {
-		xdgCache = filepath.Join(ctx.Home(), ".cache")
+	if err := copyFile(cssPath, filepath.Join(ctx.XDGConfigHome(), "AdwSteamGtk", "custom.css")); err != nil {
+		return 0, fmt.Errorf("write AdwSteamGtk custom css: %w", err)
 	}
-	xdgConfig := ctx.XDGConfigHome()
 
-	adwCacheDir := filepath.Join(xdgCache, "AdwSteamInstaller", "extracted", "adwaita", "colorthemes")
-	if stat, err := os.Stat(adwCacheDir); err == nil && stat.IsDir() {
-		if err := copyFile(cssPath, filepath.Join(adwCacheDir, steamThemeName, steamThemeName+".css")); err != nil {
-			return 0, err
+	cacheThemePath := filepath.Join(resolveXDGCacheHome(ctx), "AdwSteamInstaller", "extracted", "adwaita", "colorthemes")
+	if info, err := os.Stat(cacheThemePath); err == nil && info.IsDir() {
+		if err := copyFile(cssPath, filepath.Join(cacheThemePath, steamThemeName, steamThemeName+".css")); err != nil {
+			return 0, fmt.Errorf("write AdwSteamInstaller cache css: %w", err)
 		}
-	}
-
-	if err := copyFile(cssPath, filepath.Join(xdgConfig, "AdwSteamGtk", "custom.css")); err != nil {
-		return 0, err
 	}
 
 	deployed := 0
 	for _, dir := range steamDirs {
 		adwDir := filepath.Join(dir, "steamui", "adwaita")
-		if stat, err := os.Stat(adwDir); err != nil || !stat.IsDir() {
+		if info, err := os.Stat(adwDir); err != nil || !info.IsDir() {
 			continue
 		}
 
-		if err := copyFile(cssPath, filepath.Join(adwDir, "colorthemes", steamThemeName, steamThemeName+".css")); err != nil {
-			return deployed, err
-		}
-		if err := copyFile(cssPath, filepath.Join(adwDir, "custom", "custom.css")); err != nil {
-			return deployed, err
+		themeCSS := filepath.Join(adwDir, "colorthemes", steamThemeName, steamThemeName+".css")
+		if err := copyFile(cssPath, themeCSS); err != nil {
+			return deployed, fmt.Errorf("write steam colortheme css: %w", err)
 		}
 
-		_ = rewriteLibraryRoot(filepath.Join(dir, "steamui", "libraryroot.custom.css"))
+		customCSS := filepath.Join(adwDir, "custom", "custom.css")
+		if err := copyFile(cssPath, customCSS); err != nil {
+			return deployed, fmt.Errorf("write steam custom css: %w", err)
+		}
+
+		if err := rewriteLibraryRoot(filepath.Join(dir, "steamui", "libraryroot.custom.css")); err != nil {
+			return deployed, fmt.Errorf("rewrite steam libraryroot.custom.css: %w", err)
+		}
+
 		deployed++
 	}
 
 	return deployed, nil
+}
+
+func rewriteLibraryRoot(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	content := string(data)
+	if strings.Contains(content, "colorthemes/"+steamThemeName+"/") {
+		return nil
+	}
+
+	re := regexp.MustCompile(`colorthemes/[^/]*/[^"\s]+\.css`)
+	updated := re.ReplaceAllString(content, "colorthemes/"+steamThemeName+"/"+steamThemeName+".css")
+	if updated == content {
+		return nil
+	}
+
+	return os.WriteFile(path, []byte(updated), 0644)
 }
 
 func copyFile(src, dst string) error {
@@ -182,33 +197,21 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, data, 0644)
 }
 
-func rewriteLibraryRoot(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
+func resolveXDGCacheHome(ctx *target.Context) string {
+	if dir := os.Getenv("XDG_CACHE_HOME"); strings.TrimSpace(dir) != "" {
+		return dir
 	}
-
-	content := string(data)
-	if strings.Contains(content, "colorthemes/"+steamThemeName+"/") {
-		return nil
-	}
-
-	re := regexp.MustCompile(`colorthemes/[^/]+/[^"\n]+\.css`)
-	replaced := re.ReplaceAllString(content, "colorthemes/"+steamThemeName+"/"+steamThemeName+".css")
-	if replaced == content {
-		return nil
-	}
-
-	return os.WriteFile(path, []byte(replaced), 0644)
+	return filepath.Join(ctx.Home(), ".cache")
 }
 
 func generateSteamCSS(colors map[string]string) string {
-	getRGB := func(key, fallback string) string {
-		if value, ok := normalizeHex(colors[key]); ok {
-			return hexToRGB(value)
+	readToken := func(name, fallback string) string {
+		value, ok := normalizeHex(colors[name])
+		if ok {
+			return hexToRGBCSV(value)
 		}
-		if value, ok := normalizeHex(fallback); ok {
-			return hexToRGB(value)
+		if fallbackHex, ok := normalizeHex(fallback); ok {
+			return hexToRGBCSV(fallbackHex)
 		}
 		return "0, 0, 0"
 	}
@@ -225,6 +228,15 @@ func generateSteamCSS(colors map[string]string) string {
 	--adw-destructive-bg-rgb: %s !important;
 	--adw-destructive-fg-rgb: %s !important;
 	--adw-destructive-rgb: %s !important;
+	--adw-success-bg-rgb: %s !important;
+	--adw-success-fg-rgb: %s !important;
+	--adw-success-rgb: %s !important;
+	--adw-warning-bg-rgb: %s !important;
+	--adw-warning-fg-rgb: %s !important;
+	--adw-warning-rgb: %s !important;
+	--adw-error-bg-rgb: %s !important;
+	--adw-error-fg-rgb: %s !important;
+	--adw-error-rgb: %s !important;
 	--adw-window-bg-rgb: %s !important;
 	--adw-window-fg-rgb: %s !important;
 	--adw-view-bg-rgb: %s !important;
@@ -232,25 +244,46 @@ func generateSteamCSS(colors map[string]string) string {
 	--adw-headerbar-bg-rgb: %s !important;
 	--adw-headerbar-fg-rgb: %s !important;
 	--adw-headerbar-border-rgb: %s !important;
-	--adw-card-fg-rgb: %s !important;
+	--adw-headerbar-backdrop-rgb: %s !important;
+	--adw-popover-bg-rgb: %s !important;
+	--adw-popover-fg-rgb: %s !important;
+	--adw-thumbnail-bg-rgb: %s !important;
+	--adw-thumbnail-fg-rgb: %s !important;
+	--adw-shade-rgb: %s !important;
 	--adw-user-online-rgb: %s !important;
+	--adw-user-ingame-rgb: %s !important;
 }
 `,
-		getRGB("primary", "#8caaee"),
-		getRGB("on_primary", "#1e3a5f"),
-		getRGB("primary", "#8caaee"),
-		getRGB("error", "#f38ba8"),
-		getRGB("on_error", "#ffffff"),
-		getRGB("error", "#f38ba8"),
-		getRGB("surface_container_low", "#181825"),
-		getRGB("on_surface", "#dce0e8"),
-		getRGB("surface", "#1e1e2e"),
-		getRGB("on_surface", "#dce0e8"),
-		getRGB("surface_container", "#313244"),
-		getRGB("on_surface", "#dce0e8"),
-		getRGB("outline_variant", "#45475a"),
-		getRGB("on_surface", "#dce0e8"),
-		getRGB("primary", "#8caaee"),
+		readToken("primary", "#cba6f7"),
+		readToken("on_primary", "#1e1e2e"),
+		readToken("primary", "#cba6f7"),
+		readToken("error", "#f38ba8"),
+		readToken("on_error", "#ffffff"),
+		readToken("error", "#f38ba8"),
+		readToken("success", "#a6e3a1"),
+		readToken("on_success", "#111111"),
+		readToken("success", "#a6e3a1"),
+		readToken("tertiary", "#fab387"),
+		readToken("on_tertiary", "#111111"),
+		readToken("tertiary", "#fab387"),
+		readToken("error", "#f38ba8"),
+		readToken("on_error", "#ffffff"),
+		readToken("error", "#f38ba8"),
+		readToken("surface_container_low", "#181825"),
+		readToken("on_surface", "#cdd6f4"),
+		readToken("surface", "#1e1e2e"),
+		readToken("on_surface", "#cdd6f4"),
+		readToken("surface_container", "#313244"),
+		readToken("on_surface", "#cdd6f4"),
+		readToken("outline_variant", "#6c7086"),
+		readToken("surface_container_low", "#181825"),
+		readToken("surface_container_high", "#45475a"),
+		readToken("on_surface", "#cdd6f4"),
+		readToken("surface_container_high", "#45475a"),
+		readToken("on_surface", "#cdd6f4"),
+		readToken("shadow", "#000000"),
+		readToken("primary", "#cba6f7"),
+		readToken("success", "#a6e3a1"),
 	)
 }
 
@@ -265,8 +298,12 @@ func normalizeHex(value string) (string, bool) {
 	return "#" + strings.ToLower(trimmed), true
 }
 
-func hexToRGB(value string) string {
-	hex := strings.TrimPrefix(value, "#")
+func hexToRGBCSV(value string) string {
+	normalized, ok := normalizeHex(value)
+	if !ok {
+		return "0, 0, 0"
+	}
+	hex := strings.TrimPrefix(normalized, "#")
 	r, _ := strconv.ParseUint(hex[0:2], 16, 8)
 	g, _ := strconv.ParseUint(hex[2:4], 16, 8)
 	b, _ := strconv.ParseUint(hex[4:6], 16, 8)
