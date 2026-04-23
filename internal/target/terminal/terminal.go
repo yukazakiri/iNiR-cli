@@ -3,9 +3,11 @@ package terminal
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/snowarch/inir-cli/internal/target"
 )
@@ -18,7 +20,14 @@ type terminalWriter struct {
 	render func(palette map[string]string, terminal map[string]string) string
 }
 
-var injectAllPTS = injectSequences
+var (
+	injectAllPTS = injectSequences
+	lookPath     = exec.LookPath
+	runCommand   = func(name string, args ...string) error {
+		cmd := exec.Command(name, args...)
+		return cmd.Run()
+	}
+)
 
 func (a *Applier) Apply(ctx *target.Context) error {
 	if ctx == nil || ctx.Config == nil {
@@ -50,6 +59,8 @@ func (a *Applier) Apply(ctx *target.Context) error {
 		return err
 	}
 
+	applyTerminalRuntimeHooks(ctx, ctx.Config.WallpaperTheming.Terminals)
+
 	return nil
 }
 
@@ -80,10 +91,6 @@ func writeTerminalConfigs(ctx *target.Context, palette map[string]string, termin
 
 		if err := os.WriteFile(path, []byte(writer.render(palette, terminal)), 0644); err != nil {
 			return fmt.Errorf("write %s config: %w", writer.id, err)
-		}
-
-		if writer.id == "kitty" {
-			_ = ensureLineInFile(filepath.Join(ctx.XDGConfigHome(), "kitty", "kitty.conf"), "include current-theme.conf")
 		}
 	}
 
@@ -416,6 +423,44 @@ func ensureLineInFile(path, line string) error {
 	content += line + "\n"
 
 	return os.WriteFile(path, []byte(content), 0644)
+}
+
+func applyTerminalRuntimeHooks(ctx *target.Context, enabled map[string]bool) {
+	if isTerminalEnabled(enabled, "kitty") {
+		kittyConf := filepath.Join(ctx.XDGConfigHome(), "kitty", "kitty.conf")
+		_ = ensureLineInFile(kittyConf, "include current-theme.conf")
+		if _, err := lookPath("kitty"); err == nil {
+			_ = runCommand("pkill", "--signal", "SIGUSR1", "-x", "kitty")
+		}
+	}
+
+	if isTerminalEnabled(enabled, "alacritty") {
+		alacrittyMain := filepath.Join(ctx.XDGConfigHome(), "alacritty", "alacritty.toml")
+		_ = ensureLineInFile(alacrittyMain, `import = ["~/.config/alacritty/colors.toml"]`)
+		_ = touchFile(alacrittyMain)
+	}
+
+	if isTerminalEnabled(enabled, "wezterm") {
+		weztermMain := filepath.Join(ctx.XDGConfigHome(), "wezterm", "wezterm.lua")
+		_ = touchFile(weztermMain)
+	}
+
+	if isTerminalEnabled(enabled, "foot") {
+		if _, err := lookPath("foot"); err == nil {
+			_ = runCommand("pkill", "-USR1", "foot")
+		}
+	}
+}
+
+func touchFile(path string) error {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	now := time.Now()
+	return os.Chtimes(path, now, now)
 }
 
 func pickPalette(palette map[string]string, key, fallback string) string {
