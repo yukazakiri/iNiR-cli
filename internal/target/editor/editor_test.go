@@ -63,3 +63,44 @@ func TestZedApplierWritesThemeFile(t *testing.T) {
 		t.Fatalf("expected zed theme name in generated file, got:\n%s", string(content))
 	}
 }
+
+func TestEditorApplierWritesVSCodeCustomizations(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, "config"))
+
+	palettePath := filepath.Join(tmp, "palette.json")
+	terminalPath := filepath.Join(tmp, "terminal.json")
+	if err := os.WriteFile(palettePath, []byte(`{"primary":"#8caaee","on_surface":"#dce0e8","surface":"#1e1e2e","surface_container_low":"#181825","surface_container":"#313244"}`), 0644); err != nil {
+		t.Fatalf("write palette: %v", err)
+	}
+	if err := os.WriteFile(terminalPath, []byte(`{"term0":"#1e1e2e","term1":"#f38ba8","term2":"#a6e3a1","term3":"#f9e2af","term4":"#89b4fa","term5":"#cba6f7","term6":"#94e2d5","term7":"#cdd6f4"}`), 0644); err != nil {
+		t.Fatalf("write terminal: %v", err)
+	}
+
+	ctx := &target.Context{
+		Config: &config.Config{
+			WallpaperTheming: config.WallpaperTheming{EnableVSCode: true},
+		},
+		PalettePath:  palettePath,
+		ColorsPath:   palettePath,
+		TerminalPath: terminalPath,
+	}
+
+	var a Applier
+	if err := a.Apply(ctx); err != nil {
+		t.Fatalf("editor apply failed: %v", err)
+	}
+
+	settingsPath := filepath.Join(tmp, "config", "Code", "User", "settings.json")
+	content, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("expected vscode settings file: %v", err)
+	}
+
+	if !strings.Contains(string(content), "workbench.colorCustomizations") {
+		t.Fatalf("settings missing workbench.colorCustomizations: %s", string(content))
+	}
+	if !strings.Contains(string(content), "terminal.ansiRed") {
+		t.Fatalf("settings missing terminal palette customizations: %s", string(content))
+	}
+}

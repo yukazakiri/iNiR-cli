@@ -13,8 +13,32 @@ type Applier struct{}
 type ZedApplier struct{}
 
 func (a *Applier) Apply(ctx *target.Context) error {
+	if ctx == nil || ctx.Config == nil {
+		return fmt.Errorf("editor apply: nil context or config")
+	}
+
 	if !ctx.Config.WallpaperTheming.EnableVSCode {
+		if ctx.Config.WallpaperTheming.EnableNeovim {
+			generateNeovimSpec(ctx)
+		}
 		return nil
+	}
+
+	palette, err := ctx.ReadPaletteJSON()
+	if err != nil {
+		palette, err = ctx.ReadColorsJSON()
+		if err != nil {
+			return err
+		}
+	}
+
+	terminal, err := ctx.ReadTerminalJSON()
+	if err != nil {
+		terminal = map[string]string{}
+	}
+
+	if err := applyVSCodeCustomizations(ctx, palette, terminal, ctx.Config.WallpaperTheming.VscodeEditors); err != nil {
+		return err
 	}
 
 	neovimEnabled := ctx.Config.WallpaperTheming.EnableNeovim
@@ -23,6 +47,130 @@ func (a *Applier) Apply(ctx *target.Context) error {
 	}
 
 	return nil
+}
+
+type vscodeFork struct {
+	ConfigKey string
+	DirName   string
+}
+
+func vscodeForks() []vscodeFork {
+	return []vscodeFork{
+		{ConfigKey: "code", DirName: "Code"},
+		{ConfigKey: "codium", DirName: "VSCodium"},
+		{ConfigKey: "codeOss", DirName: "Code - OSS"},
+		{ConfigKey: "codeInsiders", DirName: "Code - Insiders"},
+		{ConfigKey: "cursor", DirName: "Cursor"},
+		{ConfigKey: "windsurf", DirName: "Windsurf"},
+		{ConfigKey: "windsurfNext", DirName: "Windsurf - Next"},
+		{ConfigKey: "qoder", DirName: "Qoder"},
+		{ConfigKey: "antigravity", DirName: "Antigravity"},
+		{ConfigKey: "positron", DirName: "Positron"},
+		{ConfigKey: "voidEditor", DirName: "Void"},
+		{ConfigKey: "melty", DirName: "Melty"},
+		{ConfigKey: "pearai", DirName: "PearAI"},
+		{ConfigKey: "aide", DirName: "Aide"},
+	}
+}
+
+func applyVSCodeCustomizations(ctx *target.Context, palette map[string]string, terminal map[string]string, enabled map[string]bool) error {
+	for _, fork := range vscodeForks() {
+		if !isForkEnabled(enabled, fork.ConfigKey) {
+			continue
+		}
+
+		settingsPath := filepath.Join(ctx.XDGConfigHome(), fork.DirName, "User", "settings.json")
+		if err := updateVSCodeSettings(settingsPath, palette, terminal); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func isForkEnabled(enabled map[string]bool, key string) bool {
+	if len(enabled) == 0 {
+		return true
+	}
+	value, ok := enabled[key]
+	if !ok {
+		return true
+	}
+	return value
+}
+
+func updateVSCodeSettings(settingsPath string, palette map[string]string, terminal map[string]string) error {
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0755); err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		data = []byte("{}")
+	}
+
+	var settings map[string]interface{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		settings = map[string]interface{}{}
+	}
+
+	settings["workbench.colorTheme"] = "Default Dark+"
+	settings["workbench.colorCustomizations"] = buildVSCodeColorCustomizations(palette, terminal)
+
+	encoded, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(settingsPath, append(encoded, '\n'), 0644)
+}
+
+func buildVSCodeColorCustomizations(palette map[string]string, terminal map[string]string) map[string]interface{} {
+	pickPalette := func(key, fallback string) string {
+		if v, ok := palette[key]; ok && v != "" {
+			return v
+		}
+		return fallback
+	}
+	pickTerminal := func(key, fallback string) string {
+		if v, ok := terminal[key]; ok && v != "" {
+			return v
+		}
+		return fallback
+	}
+
+	return map[string]interface{}{
+		"editor.background":          pickPalette("surface_container_low", "#181825"),
+		"editor.foreground":          pickPalette("on_surface", "#cdd6f4"),
+		"editorCursor.foreground":    pickPalette("primary", "#cba6f7"),
+		"activityBar.background":     pickPalette("surface", "#1e1e2e"),
+		"sideBar.background":         pickPalette("surface", "#1e1e2e"),
+		"statusBar.background":       pickPalette("surface_container", "#313244"),
+		"statusBar.foreground":       pickPalette("on_surface", "#cdd6f4"),
+		"titleBar.activeBackground":  pickPalette("surface_container", "#313244"),
+		"titleBar.activeForeground":  pickPalette("on_surface", "#cdd6f4"),
+		"terminal.background":        pickPalette("surface", "#1e1e2e"),
+		"terminal.foreground":        pickPalette("on_surface", "#cdd6f4"),
+		"terminal.ansiBlack":         pickTerminal("term0", "#1e1e2e"),
+		"terminal.ansiRed":           pickTerminal("term1", "#f38ba8"),
+		"terminal.ansiGreen":         pickTerminal("term2", "#a6e3a1"),
+		"terminal.ansiYellow":        pickTerminal("term3", "#f9e2af"),
+		"terminal.ansiBlue":          pickTerminal("term4", "#89b4fa"),
+		"terminal.ansiMagenta":       pickTerminal("term5", "#cba6f7"),
+		"terminal.ansiCyan":          pickTerminal("term6", "#94e2d5"),
+		"terminal.ansiWhite":         pickTerminal("term7", "#cdd6f4"),
+		"terminal.ansiBrightBlack":   pickTerminal("term8", "#585b70"),
+		"terminal.ansiBrightRed":     pickTerminal("term9", "#f38ba8"),
+		"terminal.ansiBrightGreen":   pickTerminal("term10", "#a6e3a1"),
+		"terminal.ansiBrightYellow":  pickTerminal("term11", "#f9e2af"),
+		"terminal.ansiBrightBlue":    pickTerminal("term12", "#89b4fa"),
+		"terminal.ansiBrightMagenta": pickTerminal("term13", "#cba6f7"),
+		"terminal.ansiBrightCyan":    pickTerminal("term14", "#94e2d5"),
+		"terminal.ansiBrightWhite":   pickTerminal("term15", "#ffffff"),
+	}
 }
 
 func (a *ZedApplier) Apply(ctx *target.Context) error {
