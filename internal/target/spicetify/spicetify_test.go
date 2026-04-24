@@ -373,8 +373,8 @@ func TestApplyWritesFilesInCorrectOrderAndStartsWatch(t *testing.T) {
 	if !strings.Contains(joinedCalls, "spicetify config current_theme Inir color_scheme matugen") {
 		t.Fatalf("expected current_theme config call, got:\n%s", joinedCalls)
 	}
-	if !strings.Contains(joinedCalls, "spicetify apply -s") {
-		t.Fatalf("expected apply call, got:\n%s", joinedCalls)
+	if strings.Contains(joinedCalls, "spicetify apply -s") {
+		t.Fatalf("expected no apply call while spotify is running, got:\n%s", joinedCalls)
 	}
 	if !strings.Contains(joinedCalls, "spicetify watch -s") {
 		t.Fatalf("expected watch start call, got:\n%s", joinedCalls)
@@ -444,8 +444,8 @@ func TestApplySkipsWhenWatchActive(t *testing.T) {
 	if strings.Contains(joinedCalls, "spicetify refresh") {
 		t.Fatalf("expected no refresh when watch is active, got:\n%s", joinedCalls)
 	}
-	if !strings.Contains(joinedCalls, "spicetify apply -s") {
-		t.Fatalf("expected apply even when watch is active, got:\n%s", joinedCalls)
+	if strings.Contains(joinedCalls, "spicetify apply -s") {
+		t.Fatalf("expected no apply when watch is active, got:\n%s", joinedCalls)
 	}
 	if strings.Contains(joinedCalls, "spicetify watch") {
 		t.Fatalf("expected no watch start when watch is already active, got:\n%s", joinedCalls)

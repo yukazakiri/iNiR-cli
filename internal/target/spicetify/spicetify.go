@@ -130,23 +130,22 @@ func (a *Applier) Apply(ctx *target.Context) error {
 	}
 	log("configured spicetify theme")
 
-	applyThemeWithFallback(log)
-
 	spotifyRunning := isProcessRunning("spotify")
 	watchRunning := isWatchActive()
 	log("spotify running: %v, watch running: %v", spotifyRunning, watchRunning)
 
 	if watchRunning {
-		log("Watch mode active - theme applied and colors updated")
+		log("Watch mode active - colors updated")
 		return nil
 	}
 
 	if !spotifyRunning {
+		applyThemeWithFallback(log)
 		log("Spotify not running - theme applied for next launch")
 		return nil
 	}
 
-	log("Spotify running without watch - theme applied, starting watch")
+	log("Spotify running without watch - starting watch mode")
 	startWatchMode(watchLock, log)
 
 	return nil
