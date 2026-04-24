@@ -373,8 +373,8 @@ func TestApplyWritesFilesInCorrectOrderAndStartsWatch(t *testing.T) {
 	if !strings.Contains(joinedCalls, "spicetify config current_theme Inir color_scheme matugen") {
 		t.Fatalf("expected current_theme config call, got:\n%s", joinedCalls)
 	}
-	if !strings.Contains(joinedCalls, "spicetify refresh -s") {
-		t.Fatalf("expected refresh call, got:\n%s", joinedCalls)
+	if !strings.Contains(joinedCalls, "spicetify apply -s") {
+		t.Fatalf("expected apply call, got:\n%s", joinedCalls)
 	}
 	if !strings.Contains(joinedCalls, "spicetify watch -s") {
 		t.Fatalf("expected watch start call, got:\n%s", joinedCalls)
@@ -530,7 +530,7 @@ func TestApplySkipsWhenDisabled(t *testing.T) {
 	}
 }
 
-func TestApplySkipsWhenSpicetifyNotInstalled(t *testing.T) {
+func TestApplyReturnsErrorWhenSpicetifyNotInstalled(t *testing.T) {
 	ctx := &target.Context{
 		Config: &config.Config{
 			WallpaperTheming: config.WallpaperTheming{EnableSpicetify: true},
@@ -544,8 +544,8 @@ func TestApplySkipsWhenSpicetifyNotInstalled(t *testing.T) {
 	defer func() { lookPath = originalLookPath }()
 
 	var a Applier
-	if err := a.Apply(ctx); err != nil {
-		t.Fatalf("apply returned error when spicetify not installed: %v", err)
+	if err := a.Apply(ctx); err == nil {
+		t.Fatalf("expected error when spicetify not installed")
 	}
 }
 

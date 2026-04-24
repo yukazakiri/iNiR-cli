@@ -63,11 +63,13 @@ func (a *Applier) Apply(ctx *target.Context) error {
 		return nil
 	}
 
-	if _, err := lookPath("spicetify"); err != nil {
-		return nil
+	spicetifyPath, err := lookPath("spicetify")
+	if err != nil {
+		return fmt.Errorf("spicetify not found in PATH: %w", err)
 	}
 
 	log := newLogger(ctx)
+	log("spicetify found at: %s", spicetifyPath)
 
 	palette, err := ctx.ReadPaletteJSON()
 	if err != nil {
@@ -82,6 +84,8 @@ func (a *Applier) Apply(ctx *target.Context) error {
 	configPath := resolveSpicetifyConfigPath(ctx)
 	spicetifyRoot := filepath.Dir(configPath)
 	themeDir := filepath.Join(spicetifyRoot, "Themes", spicetifyThemeName)
+
+	log("theme dir: %s", themeDir)
 
 	if err := osMkdirAll(themeDir, 0755); err != nil {
 		return fmt.Errorf("create spicetify theme dir: %w", err)
@@ -105,23 +109,32 @@ func (a *Applier) Apply(ctx *target.Context) error {
 	if err := upsertUserCSS(userCSS, bridgeBlock); err != nil {
 		return fmt.Errorf("write spicetify user.css bridge: %w", err)
 	}
+	log("wrote user.css bridge")
 
 	playbackBlock := renderPlaybackControlsFix(colors)
 	if err := upsertPlaybackFix(userCSS, playbackBlock); err != nil {
 		return fmt.Errorf("write spicetify user.css playback fix: %w", err)
 	}
+	log("wrote playback controls fix")
 
 	// Write color.ini LAST to trigger watch reload
 	if err := osWriteFile(colorFile, []byte(renderColorINI(colors)), 0644); err != nil {
 		return fmt.Errorf("write spicetify color.ini: %w", err)
 	}
+	log("wrote color.ini")
 
 	// Configure spicetify
-	_, _ = runCommand("spicetify", "config", "inject_css", "1", "replace_colors", "1")
-	_, _ = runCommand("spicetify", "config", "current_theme", spicetifyThemeName, "color_scheme", spicetifyColorSchemeName)
+	if out, err := runCommand("spicetify", "config", "inject_css", "1", "replace_colors", "1"); err != nil {
+		log("spicetify config inject_css failed: %v (output: %s)", err, string(out))
+	}
+	if out, err := runCommand("spicetify", "config", "current_theme", spicetifyThemeName, "color_scheme", spicetifyColorSchemeName); err != nil {
+		log("spicetify config current_theme failed: %v (output: %s)", err, string(out))
+	}
+	log("configured spicetify theme")
 
 	spotifyRunning := isProcessRunning("spotify")
 	watchRunning := isWatchActive()
+	log("spotify running: %v, watch running: %v", spotifyRunning, watchRunning)
 
 	if watchRunning {
 		log("Watch mode active - colors updated (live reload)")
@@ -129,14 +142,27 @@ func (a *Applier) Apply(ctx *target.Context) error {
 	}
 
 	if !spotifyRunning {
-		log("Spotify not running - updated theme files only (no auto-open)")
+		log("Spotify not running - applying theme for next launch")
+		// Apply theme so it's ready for next Spotify launch
+		if out, err := runCommand("spicetify", "apply", "-s"); err != nil {
+			log("spicetify apply failed: %v (output: %s)", err, string(out))
+			// Try backup apply
+			if out, err := runCommand("spicetify", "backup", "apply"); err != nil {
+				log("spicetify backup apply failed: %v (output: %s)", err, string(out))
+			}
+		}
 		return nil
 	}
 
-	log("Spotify running without watch - starting watch mode (no restart)")
-	// If watch wasn't running, the file changes we just wrote won't be picked up.
-	// We must explicitly refresh the running instance, then start watch for future changes.
-	_, _ = runCommand("spicetify", "refresh", "-s")
+	log("Spotify running without watch - applying theme and starting watch")
+	// Apply theme to running Spotify instance
+	if out, err := runCommand("spicetify", "apply", "-s"); err != nil {
+		log("spicetify apply failed: %v (output: %s)", err, string(out))
+		// Try backup apply
+		if out, err := runCommand("spicetify", "backup", "apply"); err != nil {
+			log("spicetify backup apply failed: %v (output: %s)", err, string(out))
+		}
+	}
 	startWatchMode(watchLock, log)
 
 	return nil
