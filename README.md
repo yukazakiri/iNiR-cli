@@ -72,7 +72,7 @@ inir-cli auto-detect /path/to/wallpaper.jpg
 
 ### Configuration
 
-Reads from `~/.config/illogical-impulse/config.json` by default (same config as iNiR shell). Override with `--config`.
+Reads from `~/.config/inir/config.json` by default (same config as iNiR shell). Override with `--config`.
 
 ## Commands
 
@@ -152,7 +152,7 @@ inir-cli/
 | `terminals` | ANSI injection + generated configs for Kitty, Alacritty, WezTerm, Ghostty, Foot, and Konsole + runtime reload hooks |
 | `chrome` | Dual Chrome theming path: Omarchy forks use instant RGB CLI switches, official Chrome/Chromium/Brave use managed `BrowserThemeColor` policy + explicit mode sync, both consuming `chromium.theme` as the browser-color contract source of truth |
 | `editors` | VS Code family color customizations, Zed theme file generation, OpenCode theme JSON generation, Neovim spec generation |
-| `spicetify` | Spicetify theme generation (`color.ini` + CSS bridge), config wiring, refresh/watch trigger |
+| `spicetify` | Spicetify theme generation (`color.ini` + Sleek-based `user.css` with iNiR bridge blocks), config wiring, watch-first live updates when Spotify is running (`spicetify watch -s`), and apply-on-next-launch when Spotify is closed |
 | `steam` | Adwaita-for-Steam CSS generation + deployment to Steam/AdwSteam paths + libraryroot rewrite |
 | `vesktop` | Vesktop theme CSS generation from Material palette |
 | `pear-desktop` | YouTube Music desktop CSS generation + config registration + desktop override injection |
