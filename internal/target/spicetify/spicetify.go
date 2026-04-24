@@ -244,8 +244,25 @@ func readSpicetifyColors(colors map[string]string) map[string]string {
 }
 
 func downloadSleekCSS(cssFile string, log func(string, ...interface{})) {
-	if _, err := os.Stat(cssFile); err == nil {
-		return // Already exists
+	needsDownload := false
+	if info, err := os.Stat(cssFile); err == nil {
+		// File exists - check if it actually has Sleek CSS or just our bridge blocks
+		if info.Size() < 5000 {
+			needsDownload = true
+			log("Existing user.css too small (%d bytes), likely missing Sleek base CSS — re-downloading", info.Size())
+		} else {
+			data, err := osReadFile(cssFile)
+			if err != nil || !strings.Contains(string(data), ".main-rootlist") {
+				needsDownload = true
+				log("Existing user.css missing Sleek selectors — re-downloading")
+			}
+		}
+	} else {
+		needsDownload = true
+	}
+
+	if !needsDownload {
+		return
 	}
 
 	log("Downloading base CSS from Sleek theme...")
@@ -275,7 +292,7 @@ func downloadSleekCSS(cssFile string, log func(string, ...interface{})) {
 		log("Warning: Failed to write base CSS: %v", err)
 		return
 	}
-	log("Downloaded base CSS")
+	log("Downloaded base CSS (%d bytes)", len(content))
 }
 
 func patchExistingUserCSS(cssFile string) {
