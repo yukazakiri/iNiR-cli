@@ -7,32 +7,32 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/yukazakiri/inir-cli/internal/config"
 	"github.com/yukazakiri/inir-cli/internal/color"
-	"github.com/yukazakiri/inir-cli/internal/template"
+	"github.com/yukazakiri/inir-cli/internal/config"
 	"github.com/yukazakiri/inir-cli/internal/target"
+	"github.com/yukazakiri/inir-cli/internal/template"
 )
 
 var (
-	flagImage           string
-	flagColor           string
-	flagMode            string
-	flagScheme          string
-	flagConfig          string
-	flagTemplateDir     string
-	flagOutputDir       string
-	flagCache           string
-	flagHarmony         float64
-	flagTermSaturation  float64
-	flagTermBrightness  float64
-	flagTermBgBrightness float64
+	flagImage              string
+	flagColor              string
+	flagMode               string
+	flagScheme             string
+	flagConfig             string
+	flagTemplateDir        string
+	flagOutputDir          string
+	flagCache              string
+	flagHarmony            float64
+	flagTermSaturation     float64
+	flagTermBrightness     float64
+	flagTermBgBrightness   float64
 	flagHarmonizeThreshold float64
-	flagTermFgBoost     float64
-	flagColorStrength   float64
-	flagSoften          bool
-	flagBlendBgFg       bool
-	flagSkipConfigWrite bool
-	flagForceDarkTerminal bool
+	flagTermFgBoost        float64
+	flagColorStrength      float64
+	flagSoften             bool
+	flagBlendBgFg          bool
+	flagSkipConfigWrite    bool
+	flagForceDarkTerminal  bool
 )
 
 func init() {
@@ -217,6 +217,10 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if err := writeChromiumThemeContracts(outputDir, result.Palette); err != nil {
+		fmt.Fprintf(os.Stderr, "[inir-cli] Warning: chromium.theme contract write failed: %v\n", err)
+	}
+
 	if flagTemplateDir != "" {
 		if err := template.RenderAll(flagTemplateDir, result); err != nil {
 			fmt.Fprintf(os.Stderr, "[inir-cli] Warning: template rendering failed: %v\n", err)
@@ -251,13 +255,13 @@ func runThemeApply(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := &target.Context{
-		Config:        cfg,
-		ColorsPath:    colorsPath,
-		PalettePath:   palettePath,
-		TerminalPath:  terminalPath,
-		SCSSPath:      scssPath,
-		MetaPath:      metaPath,
-		OutputDir:     outputDir,
+		Config:       cfg,
+		ColorsPath:   colorsPath,
+		PalettePath:  palettePath,
+		TerminalPath: terminalPath,
+		SCSSPath:     scssPath,
+		MetaPath:     metaPath,
+		OutputDir:    outputDir,
 	}
 
 	for _, t := range targetList {
