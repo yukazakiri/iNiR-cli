@@ -130,37 +130,23 @@ func (a *Applier) Apply(ctx *target.Context) error {
 	}
 	log("configured spicetify theme")
 
+	applyThemeWithFallback(log)
+
 	spotifyRunning := isProcessRunning("spotify")
 	watchRunning := isWatchActive()
 	log("spotify running: %v, watch running: %v", spotifyRunning, watchRunning)
 
 	if watchRunning {
-		log("Watch mode active - colors updated (live reload)")
+		log("Watch mode active - theme applied and colors updated")
 		return nil
 	}
 
 	if !spotifyRunning {
-		log("Spotify not running - applying theme for next launch")
-		// Apply theme so it's ready for next Spotify launch
-		if out, err := runCommand("spicetify", "apply", "-s"); err != nil {
-			log("spicetify apply failed: %v (output: %s)", err, string(out))
-			// Try backup apply
-			if out, err := runCommand("spicetify", "backup", "apply"); err != nil {
-				log("spicetify backup apply failed: %v (output: %s)", err, string(out))
-			}
-		}
+		log("Spotify not running - theme applied for next launch")
 		return nil
 	}
 
-	log("Spotify running without watch - applying theme and starting watch")
-	// Apply theme to running Spotify instance
-	if out, err := runCommand("spicetify", "apply", "-s"); err != nil {
-		log("spicetify apply failed: %v (output: %s)", err, string(out))
-		// Try backup apply
-		if out, err := runCommand("spicetify", "backup", "apply"); err != nil {
-			log("spicetify backup apply failed: %v (output: %s)", err, string(out))
-		}
-	}
+	log("Spotify running without watch - theme applied, starting watch")
 	startWatchMode(watchLock, log)
 
 	return nil
@@ -168,10 +154,7 @@ func (a *Applier) Apply(ctx *target.Context) error {
 
 func newLogger(ctx *target.Context) func(format string, args ...interface{}) {
 	logFile := filepath.Join(ctx.XDGStateHome(), "quickshell", "user", "generated", "spicetify_theme.log")
-	// Ensure directory exists
-	_ = osMkdirAll(filepath.Dir(logFile), 0755)
-	if _, err := os.Stat(logFile); err != nil {
-		// Try tmp fallback
+	if err := osMkdirAll(filepath.Dir(logFile), 0755); err != nil {
 		logFile = "/tmp/spicetify_theme.log"
 	}
 
@@ -180,6 +163,19 @@ func newLogger(ctx *target.Context) func(format string, args ...interface{}) {
 		timestamp := time.Now().Format("15:04:05")
 		line := fmt.Sprintf("[%s] [spicetify] %s\n", timestamp, msg)
 		_ = appendToFile(logFile, line)
+	}
+}
+
+func applyThemeWithFallback(log func(format string, args ...interface{})) {
+	if out, err := runCommand("spicetify", "apply", "-s"); err != nil {
+		log("spicetify apply failed: %v (output: %s)", err, string(out))
+		if out, err := runCommand("spicetify", "backup", "apply"); err != nil {
+			log("spicetify backup apply failed: %v (output: %s)", err, string(out))
+		} else {
+			log("spicetify backup apply succeeded")
+		}
+	} else {
+		log("spicetify apply succeeded")
 	}
 }
 

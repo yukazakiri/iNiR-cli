@@ -444,6 +444,9 @@ func TestApplySkipsWhenWatchActive(t *testing.T) {
 	if strings.Contains(joinedCalls, "spicetify refresh") {
 		t.Fatalf("expected no refresh when watch is active, got:\n%s", joinedCalls)
 	}
+	if !strings.Contains(joinedCalls, "spicetify apply -s") {
+		t.Fatalf("expected apply even when watch is active, got:\n%s", joinedCalls)
+	}
 	if strings.Contains(joinedCalls, "spicetify watch") {
 		t.Fatalf("expected no watch start when watch is already active, got:\n%s", joinedCalls)
 	}
@@ -511,6 +514,9 @@ func TestApplySkipsWhenSpotifyNotRunning(t *testing.T) {
 	joinedCalls := strings.Join(calls, "\n")
 	if strings.Contains(joinedCalls, "spicetify refresh") {
 		t.Fatalf("expected no refresh when spotify not running, got:\n%s", joinedCalls)
+	}
+	if !strings.Contains(joinedCalls, "spicetify apply -s") {
+		t.Fatalf("expected apply when spotify not running, got:\n%s", joinedCalls)
 	}
 	if strings.Contains(joinedCalls, "spicetify watch") {
 		t.Fatalf("expected no watch start when spotify not running, got:\n%s", joinedCalls)
