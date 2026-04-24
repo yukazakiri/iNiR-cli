@@ -79,7 +79,7 @@ Reads from `~/.config/illogical-impulse/config.json` by default (same config as 
 | Command | Description |
 |---|---|
 | `generate` | Generate color palette from wallpaper image or seed color |
-| `scheme` | Apply a built-in static theme preset (44 themes), including `--random` |
+| `scheme` | Apply a built-in static theme preset (44 themes), including `--random`; with `--apply`, writes compatibility files and applies targets with progress output |
 | `theme generate` | Full pipeline: generate palette from wallpaper |
 | `theme apply [targets...]` | Apply generated colors to specified targets |
 | `auto-detect [image]` | Detect the best Material You scheme variant for an image |
@@ -95,6 +95,10 @@ All generation commands write to the same file contract used by the iNiR shell:
 | `terminal.json` | Terminal 16-color ANSI palette (term0–term15) |
 | `theme-meta.json` | Source metadata (preset/wallpaper, mode, scheme, terminal source) |
 | `material_colors.scss` | SCSS variables for GTK theming |
+| `color.txt` | Compatibility seed color used by iNiR-style browser/theming scripts |
+| `chromium.theme` | Browser seed RGB contract for Chromium-based theming (derived from `surface_container_low`, then `surface`, then `background`) |
+
+`chromium.theme` is the source of truth for Chromium-based browser theme color application.
 
 Default output: `~/.local/state/quickshell/user/generated/`
 
@@ -130,7 +134,7 @@ inir-cli/
 │       ├── target.go                # Context, Applier interface, registry
 │       ├── gtk/gtk.go               # GTK3/4 + KDE theme generation
 │       ├── terminal/terminal.go     # ANSI sequence injection
-│       ├── chrome/chrome.go         # Chrome/Chromium/Brave GM3 policy
+│       ├── chrome/chrome.go         # Chromium browser GM3 policy + live refresh
 │       ├── editor/editor.go         # Neovim + VS Code/Zed/OpenCode theming
 │       ├── spicetify/spicetify.go   # Spicetify theme + CSS bridge + refresh/watch
 │       ├── steam/steam.go           # Adwaita-for-Steam CSS generation + deployment
@@ -146,7 +150,7 @@ inir-cli/
 | Target | Description |
 |---|---|
 | `terminals` | ANSI injection + generated configs for Kitty, Alacritty, WezTerm, Ghostty, Foot, and Konsole + runtime reload hooks |
-| `chrome` | Chrome/Chromium/Brave BrowserThemeColor policy + profile preference normalization |
+| `chrome` | Dual Chrome theming path: Omarchy forks use instant RGB CLI switches, official Chrome/Chromium/Brave use managed `BrowserThemeColor` policy + explicit mode sync, both consuming `chromium.theme` as the browser-color contract source of truth |
 | `editors` | VS Code family color customizations, Zed theme file generation, OpenCode theme JSON generation, Neovim spec generation |
 | `spicetify` | Spicetify theme generation (`color.ini` + CSS bridge), config wiring, refresh/watch trigger |
 | `steam` | Adwaita-for-Steam CSS generation + deployment to Steam/AdwSteam paths + libraryroot rewrite |
@@ -166,6 +170,7 @@ inir-cli/
 
 | Area | Remaining Work |
 |---|---|
+| Chrome policy setup | Automatic privileged policy directory setup is intentionally not handled; create writable policy dirs manually as needed |
 | Steam/Pear runtime behavior | CDP live-injection parity from shell scripts is not fully ported |
 | Vesktop/Discord | system24-style full parity behavior still incomplete |
 | Generator fidelity | Some script-level edge cases and output normalization still need parity passes |
