@@ -2,10 +2,14 @@ package spicetify
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/yukazakiri/inir-cli/internal/target"
 	"github.com/yukazakiri/inir-cli/internal/target/shared/colorutil"
@@ -19,6 +23,11 @@ const (
 
 	bridgeStartMarker = "/* === iNiR CSS variable bridge - auto-generated, do not edit === */"
 	bridgeEndMarker   = "/* === end iNiR CSS variable bridge === */"
+
+	playbackStartMarker = "/* === iNiR playback controls fix - auto-generated === */"
+	playbackEndMarker   = "/* === end iNiR playback controls fix === */"
+
+	sleekCSSURL = "https://raw.githubusercontent.com/spicetify/spicetify-themes/master/Sleek/user.css"
 )
 
 var (
@@ -37,6 +46,12 @@ var (
 	isWatchActive = func() bool {
 		return exec.Command("pgrep", "-f", "spicetify watch").Run() == nil
 	}
+	httpGet = func(url string) (*http.Response, error) {
+		return http.Get(url)
+	}
+	osWriteFile = os.WriteFile
+	osReadFile  = os.ReadFile
+	osMkdirAll  = os.MkdirAll
 )
 
 func (a *Applier) Apply(ctx *target.Context) error {
@@ -52,41 +67,106 @@ func (a *Applier) Apply(ctx *target.Context) error {
 		return nil
 	}
 
+	log := newLogger(ctx)
+
 	palette, err := ctx.ReadPaletteJSON()
 	if err != nil {
 		palette, err = ctx.ReadColorsJSON()
 		if err != nil {
+			log("palette/colors JSON not found: %v", err)
 			return fmt.Errorf("read spicetify colors: %w", err)
 		}
 	}
 
-	scheme := buildSpicetifyScheme(palette)
+	colors := readSpicetifyColors(palette)
 	configPath := resolveSpicetifyConfigPath(ctx)
-	themeDir := filepath.Join(filepath.Dir(configPath), "Themes", spicetifyThemeName)
+	spicetifyRoot := filepath.Dir(configPath)
+	themeDir := filepath.Join(spicetifyRoot, "Themes", spicetifyThemeName)
 
-	if err := os.MkdirAll(themeDir, 0755); err != nil {
+	if err := osMkdirAll(themeDir, 0755); err != nil {
 		return fmt.Errorf("create spicetify theme dir: %w", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(themeDir, "color.ini"), []byte(renderColorINI(scheme)), 0644); err != nil {
+	colorFile := filepath.Join(themeDir, "color.ini")
+	userCSS := filepath.Join(themeDir, "user.css")
+	watchLock := filepath.Join(ctx.XDGStateHome(), "quickshell", "user", "generated", "spicetify_watch.lock")
+
+	// Download Sleek base CSS if missing
+	downloadSleekCSS(userCSS, log)
+
+	// Patch existing CSS for readability
+	patchExistingUserCSS(userCSS)
+
+	// Write user.css bridge FIRST so that when color.ini lands (last) and
+	// triggers spicetify watch's file-change debounce, user.css is already
+	// fully updated. Reversed order caused watch to reload Spotify from
+	// color.ini before user.css was written — leaving bridge vars stale.
+	bridgeBlock := renderBridgeCSS(colors)
+	if err := upsertUserCSS(userCSS, bridgeBlock); err != nil {
+		return fmt.Errorf("write spicetify user.css bridge: %w", err)
+	}
+
+	playbackBlock := renderPlaybackControlsFix(colors)
+	if err := upsertPlaybackFix(userCSS, playbackBlock); err != nil {
+		return fmt.Errorf("write spicetify user.css playback fix: %w", err)
+	}
+
+	// Write color.ini LAST to trigger watch reload
+	if err := osWriteFile(colorFile, []byte(renderColorINI(colors)), 0644); err != nil {
 		return fmt.Errorf("write spicetify color.ini: %w", err)
 	}
 
-	if err := upsertUserCSS(filepath.Join(themeDir, "user.css"), renderBridgeCSS(scheme)); err != nil {
-		return fmt.Errorf("write spicetify user.css: %w", err)
-	}
-
+	// Configure spicetify
 	_, _ = runCommand("spicetify", "config", "inject_css", "1", "replace_colors", "1")
 	_, _ = runCommand("spicetify", "config", "current_theme", spicetifyThemeName, "color_scheme", spicetifyColorSchemeName)
 
-	if isWatchActive() || !isProcessRunning("spotify") {
+	spotifyRunning := isProcessRunning("spotify")
+	watchRunning := isWatchActive()
+
+	if watchRunning {
+		log("Watch mode active - colors updated (live reload)")
 		return nil
 	}
 
+	if !spotifyRunning {
+		log("Spotify not running - updated theme files only (no auto-open)")
+		return nil
+	}
+
+	log("Spotify running without watch - starting watch mode (no restart)")
+	// If watch wasn't running, the file changes we just wrote won't be picked up.
+	// We must explicitly refresh the running instance, then start watch for future changes.
 	_, _ = runCommand("spicetify", "refresh", "-s")
-	_ = startCommand("spicetify", "watch", "-s")
+	startWatchMode(watchLock, log)
 
 	return nil
+}
+
+func newLogger(ctx *target.Context) func(format string, args ...interface{}) {
+	logFile := filepath.Join(ctx.XDGStateHome(), "quickshell", "user", "generated", "spicetify_theme.log")
+	// Ensure directory exists
+	_ = osMkdirAll(filepath.Dir(logFile), 0755)
+	if _, err := os.Stat(logFile); err != nil {
+		// Try tmp fallback
+		logFile = "/tmp/spicetify_theme.log"
+	}
+
+	return func(format string, args ...interface{}) {
+		msg := fmt.Sprintf(format, args...)
+		timestamp := time.Now().Format("15:04:05")
+		line := fmt.Sprintf("[%s] [spicetify] %s\n", timestamp, msg)
+		_ = appendToFile(logFile, line)
+	}
+}
+
+func appendToFile(path, content string) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(content)
+	return err
 }
 
 func resolveSpicetifyConfigPath(ctx *target.Context) string {
@@ -95,16 +175,14 @@ func resolveSpicetifyConfigPath(ctx *target.Context) string {
 	if err != nil {
 		return defaultPath
 	}
-
 	configPath := strings.TrimSpace(string(output))
 	if configPath == "" {
 		return defaultPath
 	}
-
 	return configPath
 }
 
-func buildSpicetifyScheme(colors map[string]string) map[string]string {
+func readSpicetifyColors(colors map[string]string) map[string]string {
 	pick := func(key, fallback string) string {
 		value := strings.TrimSpace(colors[key])
 		if normalized, ok := colorutil.NormalizeHexLower(value); ok {
@@ -117,27 +195,78 @@ func buildSpicetifyScheme(colors map[string]string) map[string]string {
 	}
 
 	return map[string]string{
-		"text":               pick("on_surface", "#dce0e8"),
-		"subtext":            pick("on_surface_variant", "#a6adc8"),
-		"main":               pick("surface", "#1e1e2e"),
-		"sidebar":            pick("surface_container_low", "#181825"),
-		"player":             pick("surface_container", "#313244"),
-		"card":               pick("surface_container_high", "#45475a"),
-		"shadow":             pick("shadow", "#000000"),
-		"selected-row":       pick("on_surface_variant", "#a6adc8"),
-		"button":             pick("primary", "#8caaee"),
-		"button-active":      pick("secondary_container", "#3d4c6b"),
-		"button-disabled":    pick("outline_variant", "#45475a"),
-		"tab-active":         pick("surface_container_highest", "#494d64"),
-		"notification":       pick("tertiary", "#94e2d5"),
-		"notification-error": pick("error", "#f38ba8"),
-		"misc":               pick("outline", "#585b70"),
+		"primary":                pick("primary", "#8caaee"),
+		"on_primary":             pick("on_primary", "#1e3a5f"),
+		"on_primary_container":   pick("on_primary_container", "#dce0e8"),
+		"on_surface":             pick("on_surface", "#dce0e8"),
+		"on_surface_variant":     pick("on_surface_variant", "#a6adc8"),
+		"surface":                pick("surface", "#1e1e2e"),
+		"surface_variant":        pick("surface_variant", "#45475a"),
+		"surface_container_low":  pick("surface_container_low", "#181825"),
+		"surface_container":      pick("surface_container", "#313244"),
+		"surface_container_high": pick("surface_container_high", "#45475a"),
+		"surface_container_highest": pick("surface_container_highest", "#494d64"),
+		"primary_container":      pick("primary_container", "#313244"),
+		"secondary":              pick("secondary", "#89b4fa"),
+		"secondary_container":    pick("secondary_container", "#3d4c6b"),
+		"tertiary":               pick("tertiary", "#94e2d5"),
+		"outline":                pick("outline", "#585b70"),
+		"outline_variant":        pick("outline_variant", "#45475a"),
+		"error":                  pick("error", "#f38ba8"),
+		"shadow":                 pick("shadow", "#000000"),
 	}
 }
 
-func renderColorINI(scheme map[string]string) string {
-	toToken := func(key string) string {
-		value := scheme[key]
+func downloadSleekCSS(cssFile string, log func(string, ...interface{})) {
+	if _, err := os.Stat(cssFile); err == nil {
+		return // Already exists
+	}
+
+	log("Downloading base CSS from Sleek theme...")
+	resp, err := httpGet(sleekCSSURL)
+	if err != nil {
+		log("Warning: Failed to download base CSS: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log("Warning: Failed to download base CSS: HTTP %d", resp.StatusCode)
+		return
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log("Warning: Failed to read base CSS: %v", err)
+		return
+	}
+
+	content := string(data)
+	// Fix hard-to-read right-side playback controls
+	content = strings.ReplaceAll(content, "rgba(var(--spice-rgb-selected-row),.7)", "var(--spice-subtext)")
+
+	if err := osWriteFile(cssFile, []byte(content), 0644); err != nil {
+		log("Warning: Failed to write base CSS: %v", err)
+		return
+	}
+	log("Downloaded base CSS")
+}
+
+func patchExistingUserCSS(cssFile string) {
+	data, err := osReadFile(cssFile)
+	if err != nil {
+		return
+	}
+	content := string(data)
+	patched := strings.ReplaceAll(content, "rgba(var(--spice-rgb-selected-row),.7)", "var(--spice-subtext)")
+	if patched != content {
+		_ = osWriteFile(cssFile, []byte(patched), 0644)
+	}
+}
+
+func renderColorINI(colors map[string]string) string {
+	strip := func(key string) string {
+		value := colors[key]
 		if value == "" {
 			return "000000"
 		}
@@ -161,90 +290,170 @@ notification       = %s
 notification-error = %s
 misc               = %s
 `,
-		toToken("text"),
-		toToken("subtext"),
-		toToken("main"),
-		toToken("sidebar"),
-		toToken("player"),
-		toToken("card"),
-		toToken("shadow"),
-		toToken("selected-row"),
-		toToken("button"),
-		toToken("button-active"),
-		toToken("button-disabled"),
-		toToken("tab-active"),
-		toToken("notification"),
-		toToken("notification-error"),
-		toToken("misc"),
+		strip("on_surface"),
+		strip("on_surface_variant"),
+		strip("surface"),
+		strip("surface_container_low"),
+		strip("surface_container"),
+		strip("surface_container_high"),
+		strip("shadow"),
+		strip("on_surface_variant"),
+		strip("primary"),
+		strip("secondary_container"),
+		strip("outline_variant"),
+		strip("surface_container_highest"),
+		strip("tertiary"),
+		strip("error"),
+		strip("outline"),
 	)
 }
 
-func renderBridgeCSS(scheme map[string]string) string {
-	main := scheme["main"]
-	sidebar := scheme["sidebar"]
-	button := scheme["button"]
-	text := scheme["text"]
-	misc := scheme["misc"]
-
-	buttonRGB := hexToRGB(button)
-	mainRGB := hexToRGB(main)
-	sidebarRGB := hexToRGB(sidebar)
+func renderBridgeCSS(colors map[string]string) string {
+	mainSecondary := colors["surface_container"]
+	mainElevated := colors["surface_container_high"]
+	highlight := colors["surface_container_high"]
+	highlightElevated := colors["surface_container_highest"]
+	navActive := colors["primary_container"]
+	navActiveText := colors["on_primary_container"]
+	playbackBar := colors["on_surface_variant"]
+	playButton := colors["primary"]
+	playButtonActive := colors["secondary_container"]
+	buttonSecondary := colors["on_surface_variant"]
+	primary := colors["primary"]
+	outlineVariant := colors["outline_variant"]
 
 	return fmt.Sprintf(`%s
 :root {
-  --spice-main-secondary: %s;
-  --spice-main-elevated: %s;
-  --spice-nav-active: %s;
-  --spice-nav-active-text: %s;
-  --spice-hover: rgba(%s, 0.10);
-  --spice-active: rgba(%s, 0.18);
-  --spice-border: %s;
-  --spice-rgb-main: %s;
-  --spice-rgb-main-secondary: %s;
-  --spice-rgb-sidebar: %s;
+  --spice-main-secondary:      %s;
+  --spice-main-elevated:       %s;
+  --spice-highlight:           %s;
+  --spice-highlight-elevated:  %s;
+  --spice-nav-active:          %s;
+  --spice-nav-active-text:     %s;
+  --spice-playback-bar:        %s;
+  --spice-play-button:         %s;
+  --spice-play-button-active:  %s;
+  --spice-button-secondary:    %s;
+  --spice-hover:               rgba(%s, 0.10);
+  --spice-active:              rgba(%s, 0.18);
+  --spice-border:              %s;
+
+  --spice-rgb-main:            %s;
+  --spice-rgb-main-secondary:  %s;
+  --spice-rgb-sidebar:         %s;
+  --spice-rgb-selected-row:    %s;
+  --spice-rgb-button:          %s;
+  --spice-rgb-shadow:          %s;
+  --spice-rgb-misc:            %s;
 }
 %s
 `,
 		bridgeStartMarker,
-		scheme["player"],
-		scheme["card"],
-		button,
-		text,
-		buttonRGB,
-		buttonRGB,
-		misc,
-		mainRGB,
-		mainRGB,
-		sidebarRGB,
+		mainSecondary,
+		mainElevated,
+		highlight,
+		highlightElevated,
+		navActive,
+		navActiveText,
+		playbackBar,
+		playButton,
+		playButtonActive,
+		buttonSecondary,
+		hexToRGB(primary),
+		hexToRGB(primary),
+		outlineVariant,
+		hexToRGB(colors["surface"]),
+		hexToRGB(mainSecondary),
+		hexToRGB(colors["surface_container_low"]),
+		hexToRGB(colors["on_surface_variant"]),
+		hexToRGB(colors["primary"]),
+		hexToRGB(colors["shadow"]),
+		hexToRGB(colors["outline"]),
 		bridgeEndMarker,
+	)
+}
+
+func renderPlaybackControlsFix(colors map[string]string) string {
+	playbackRGB := hexToRGB(colors["on_surface_variant"])
+
+	return fmt.Sprintf(`%s
+.main-playbackBar__slider,
+.playback-bar__progress-time-elapsed,
+.main-playbackBar__slider::before {
+  --spice-rgb-selected-row: %s;
+}
+
+.control-button,
+.main-connectToDevice-button {
+  color: var(--spice-subtext) !important;
+}
+
+.control-button:hover,
+.main-connectToDevice-button:hover {
+  color: var(--spice-text) !important;
+}
+
+.progress-bar {
+  --spice-rgb-selected-row: %s;
+}
+
+.progress-bar__bg {
+  background-color: rgba(%s, 0.3) !important;
+}
+%s
+`,
+		playbackStartMarker,
+		playbackRGB,
+		playbackRGB,
+		playbackRGB,
+		playbackEndMarker,
 	)
 }
 
 func upsertUserCSS(path, managedBlock string) error {
 	current := ""
-	data, err := os.ReadFile(path)
+	data, err := osReadFile(path)
 	if err == nil {
 		current = string(data)
 	} else if !os.IsNotExist(err) {
 		return err
 	}
 
-	updated := upsertManagedBlock(current, managedBlock)
-	return os.WriteFile(path, []byte(updated), 0644)
+	updated := upsertManagedBlock(current, managedBlock, bridgeStartMarker, bridgeEndMarker)
+	return osWriteFile(path, []byte(updated), 0644)
 }
 
-func upsertManagedBlock(current, managedBlock string) string {
-	start := strings.Index(current, bridgeStartMarker)
-	end := strings.Index(current, bridgeEndMarker)
-	if start >= 0 && end >= start {
-		end += len(bridgeEndMarker)
-		for end < len(current) && (current[end] == '\n' || current[end] == '\r') {
-			end++
-		}
-		current = current[:start] + current[end:]
+func upsertPlaybackFix(path, managedBlock string) error {
+	current := ""
+	data, err := osReadFile(path)
+	if err == nil {
+		current = string(data)
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 
+	updated := upsertManagedBlock(current, managedBlock, playbackStartMarker, playbackEndMarker)
+	// Playback fix goes at the TOP (prepended) so it takes priority
+	if strings.Contains(updated, playbackStartMarker) {
+		// Already inserted by upsertManagedBlock (appended) — we need to move to top
+		// Extract the block
+		re := regexp.MustCompile(regexp.QuoteMeta(playbackStartMarker) + ".*?" + regexp.QuoteMeta(playbackEndMarker) + "\n?")
+		block := re.FindString(updated)
+		updated = re.ReplaceAllString(updated, "")
+		updated = strings.TrimLeft(updated, "\n")
+		if block != "" {
+			updated = block + "\n" + updated
+		}
+	}
+	return osWriteFile(path, []byte(updated), 0644)
+}
+
+func upsertManagedBlock(current, managedBlock, startMarker, endMarker string) string {
+	pattern := regexp.QuoteMeta(startMarker) + `(?s:.*?)` + regexp.QuoteMeta(endMarker) + `\n?`
+	re := regexp.MustCompile(pattern)
+	current = re.ReplaceAllString(current, "")
 	current = strings.TrimLeft(current, "\n")
+
 	if strings.TrimSpace(current) == "" {
 		return managedBlock + "\n"
 	}
@@ -253,6 +462,21 @@ func upsertManagedBlock(current, managedBlock string) string {
 	}
 
 	return current + "\n" + managedBlock + "\n"
+}
+
+func startWatchMode(watchLock string, log func(string, ...interface{})) {
+	log("Starting spicetify watch mode...")
+	_ = startCommand("spicetify", "watch", "-s")
+	// Give it a moment to start
+	time.Sleep(500 * time.Millisecond)
+
+	if isWatchActive() {
+		_ = osWriteFile(watchLock, []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
+		log("Watch mode started")
+	} else {
+		log("Failed to start watch mode")
+		_ = os.Remove(watchLock)
+	}
 }
 
 func hexToRGB(value string) string {
