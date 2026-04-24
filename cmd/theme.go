@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -97,9 +98,59 @@ func loadConfig(configPath string) *config.Config {
 	}
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return config.DefaultConfig()
+		fallback := config.DefaultConfig()
+		applyWallpaperThemingFromRawConfig(configPath, fallback)
+		return fallback
 	}
 	return cfg
+}
+
+func applyWallpaperThemingFromRawConfig(configPath string, cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return
+	}
+
+	var root map[string]interface{}
+	if err := json.Unmarshal(data, &root); err != nil {
+		return
+	}
+
+	appearance, _ := root["appearance"].(map[string]interface{})
+	wallpaperTheming, _ := appearance["wallpaperTheming"].(map[string]interface{})
+	if len(wallpaperTheming) == 0 {
+		if direct, ok := root["wallpaperTheming"].(map[string]interface{}); ok {
+			wallpaperTheming = direct
+		}
+	}
+
+	readBool := func(key string, current bool) bool {
+		value, ok := wallpaperTheming[key]
+		if !ok {
+			return current
+		}
+		b, ok := value.(bool)
+		if !ok {
+			return current
+		}
+		return b
+	}
+
+	cfg.WallpaperTheming.EnableAppsAndShell = readBool("enableAppsAndShell", cfg.WallpaperTheming.EnableAppsAndShell)
+	cfg.WallpaperTheming.EnableTerminal = readBool("enableTerminal", cfg.WallpaperTheming.EnableTerminal)
+	cfg.WallpaperTheming.EnableQtApps = readBool("enableQtApps", cfg.WallpaperTheming.EnableQtApps)
+	cfg.WallpaperTheming.EnableVesktop = readBool("enableVesktop", cfg.WallpaperTheming.EnableVesktop)
+	cfg.WallpaperTheming.EnableZed = readBool("enableZed", cfg.WallpaperTheming.EnableZed)
+	cfg.WallpaperTheming.EnableVSCode = readBool("enableVSCode", cfg.WallpaperTheming.EnableVSCode)
+	cfg.WallpaperTheming.EnableChrome = readBool("enableChrome", cfg.WallpaperTheming.EnableChrome)
+	cfg.WallpaperTheming.EnableSpicetify = readBool("enableSpicetify", cfg.WallpaperTheming.EnableSpicetify)
+	cfg.WallpaperTheming.EnableAdwSteam = readBool("enableAdwSteam", cfg.WallpaperTheming.EnableAdwSteam)
+	cfg.WallpaperTheming.EnablePearDesktop = readBool("enablePearDesktop", cfg.WallpaperTheming.EnablePearDesktop)
+	cfg.WallpaperTheming.EnableNeovim = readBool("enableNeovim", cfg.WallpaperTheming.EnableNeovim)
+	cfg.WallpaperTheming.EnableOpenCode = readBool("enableOpenCode", cfg.WallpaperTheming.EnableOpenCode)
 }
 
 func resolveOutputDir() string {
