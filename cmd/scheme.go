@@ -16,14 +16,14 @@ import (
 )
 
 var (
-	flagSchemeConfig     string
-	flagSchemeOutputDir  string
-	flagSchemeList       bool
-	flagSchemeApply      bool
-	flagSchemeRandom     bool
-	flagSchemeHarmony    float64
-	flagSchemeTermSat    float64
-	flagSchemeTermBri    float64
+	flagSchemeConfig    string
+	flagSchemeOutputDir string
+	flagSchemeList      bool
+	flagSchemeApply     bool
+	flagSchemeRandom    bool
+	flagSchemeHarmony   float64
+	flagSchemeTermSat   float64
+	flagSchemeTermBri   float64
 )
 
 var schemeCmd = &cobra.Command{
@@ -112,13 +112,13 @@ func runScheme(cmd *cobra.Command, args []string) error {
 	}
 
 	meta := map[string]interface{}{
-		"source":        "preset",
-		"preset":        preset.ID,
-		"mode":          modeString(preset.Colors.Darkmode),
-		"scheme":        "preset",
-		"transparent":   preset.Colors.Transparent,
-		"term_source":   termSource(preset.Colors.HasExplicitTerminalColors()),
-		"generated_by":  "inir-cli",
+		"source":       "preset",
+		"preset":       preset.ID,
+		"mode":         modeString(preset.Colors.Darkmode),
+		"scheme":       "preset",
+		"transparent":  preset.Colors.Transparent,
+		"term_source":  termSource(preset.Colors.HasExplicitTerminalColors()),
+		"generated_by": "inir-cli",
 	}
 	if err := writeSchemeJSON(metaPath, meta); err != nil {
 		return fmt.Errorf("write theme-meta.json: %w", err)
@@ -126,6 +126,9 @@ func runScheme(cmd *cobra.Command, args []string) error {
 
 	if err := writeSchemeSCSS(scssPath, &preset.Colors, colorsMap, termColors); err != nil {
 		fmt.Fprintf(os.Stderr, "[inir-cli] Warning: SCSS write failed: %v\n", err)
+	}
+	if err := writeChromiumThemeContracts(outputDir, colorsMap); err != nil {
+		fmt.Fprintf(os.Stderr, "[inir-cli] Warning: compatibility file write failed: %v\n", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "[inir-cli] Applied preset theme: %s (%s)\n", preset.Name, preset.ID)
@@ -194,14 +197,24 @@ func applySchemeTargets(outputDir string) error {
 	}
 
 	targets := allSchemeTargets()
+	fmt.Fprintf(os.Stderr, "[inir-cli] Applying preset theme to %d targets...\n", len(targets))
+	failed := 0
 	for _, t := range targets {
 		applier := target.GetApplier(t)
 		if applier == nil {
+			fmt.Fprintf(os.Stderr, "[inir-cli] Target %s skipped: not registered\n", t)
 			continue
 		}
+		fmt.Fprintf(os.Stderr, "[inir-cli] Target %s: applying\n", t)
 		if err := applier.Apply(ctx); err != nil {
 			fmt.Fprintf(os.Stderr, "[inir-cli] Target %s: %v\n", t, err)
+			failed++
+			continue
 		}
+		fmt.Fprintf(os.Stderr, "[inir-cli] Target %s: done\n", t)
+	}
+	if failed > 0 {
+		fmt.Fprintf(os.Stderr, "[inir-cli] Applied preset theme with %d target error(s)\n", failed)
 	}
 	return nil
 }
