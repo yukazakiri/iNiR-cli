@@ -93,7 +93,7 @@ func resolveXDG() (configHome, stateHome, cacheHome string) {
 func loadConfig(configPath string) *config.Config {
 	if configPath == "" {
 		configHome, _, _ := resolveXDG()
-		configPath = filepath.Join(configHome, "illogical-impulse", "config.json")
+		configPath = filepath.Join(configHome, "inir", "config.json")
 	}
 	cfg, err := config.Load(configPath)
 	if err != nil {

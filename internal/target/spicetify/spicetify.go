@@ -85,8 +85,6 @@ func (a *Applier) Apply(ctx *target.Context) error {
 	spicetifyRoot := filepath.Dir(configPath)
 	themeDir := filepath.Join(spicetifyRoot, "Themes", spicetifyThemeName)
 
-	log("theme dir: %s", themeDir)
-
 	if err := osMkdirAll(themeDir, 0755); err != nil {
 		return fmt.Errorf("create spicetify theme dir: %w", err)
 	}
