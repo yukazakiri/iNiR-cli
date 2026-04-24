@@ -1,0 +1,70 @@
+name: CodeQL Security Analysis
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: '0 0 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze Code Security
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+
+      - name: Set up Node.js
+        if: matrix.language == 'go'
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Build frontend
+        if: matrix.language == 'go'
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      - name: Build Go
+        if: matrix.language == 'go'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config \
+            libgtk-layer-shell-dev libgstreamer1.0-dev
+          go build -tags webkit2_41 -v ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
