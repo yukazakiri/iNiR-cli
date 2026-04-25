@@ -11,7 +11,35 @@ A Go CLI for generating Material You color palettes and applying them across 30+
 
 It can also apply any of 44 built-in static theme presets (Catppuccin, Gruvbox, Tokyo Night, Nord, etc.) without requiring a wallpaper.
 
+## Feature Highlights
+
+- Material You palette generation from wallpapers or seed colors
+- Static preset themes with optional target application
+- Centralized color output contract shared by all generation paths and target application paths
+- Desktop target theming for GTK/KDE, terminals, editors, browsers, Spotify, Steam, Vesktop, Pear Desktop, and SDDM
+- Community-extensible external targets (add one JSON file in `~/.config/inir/targets/` and auto-discover)
+- iNiR shell IPC/toggle compatibility for keybinds and scripts (`inir-cli overview toggle`, `inir-cli control-panel toggle`, etc.)
+
 ## Installation
+
+### Quick install (recommended)
+
+```bash
+./install.sh
+```
+
+The installer builds from source, installs to `~/.local/bin/inir-cli`, and ensures it's on your `PATH`. It supports:
+
+| Flag | Description |
+|---|---|
+| `--prefix DIR` | Install to `DIR/bin` (default: `~/.local`) |
+| `--uninstall` | Remove inir-cli |
+| `--dry-run` | Show what would happen without doing it |
+| `--verbose` | Verbose output |
+
+Requires Go 1.24+.
+
+### Manual build
 
 ```bash
 go build -o bin/inir-cli .
@@ -24,8 +52,6 @@ mkdir -p ~/.local/bin && go build -o ~/.local/bin/inir-cli . && chmod +x ~/.loca
 ```
 
 Make sure `~/.local/bin` is on your `PATH`.
-
-Requires Go 1.24+.
 
 ## Usage
 
@@ -63,6 +89,82 @@ inir-cli theme apply gtk-kde terminals editors chrome
 inir-cli theme apply all
 ```
 
+### List built-in and external theme targets
+
+```bash
+inir-cli theme list-targets
+```
+
+### Scaffold a new external target spec
+
+```bash
+inir-cli theme scaffold-target my-app \
+  --command /usr/local/bin/my-app-theme-apply \
+  --description "Apply generated palette to My App" \
+  --arg --mode --arg material \
+  --input palette.json --input terminal.json
+```
+
+External target specs are auto-discovered from:
+
+- `${INIR_THEME_TARGETS_DIR}` (colon-separated dirs, optional)
+- `$(dirname <config.json>)/targets/`
+- `~/.config/inir/targets/`
+- `~/.config/inir-cli/targets/`
+
+Minimal external target spec example (`~/.config/inir/targets/my-app.json`):
+
+```json
+{
+  "id": "my-app",
+  "type": "command",
+  "description": "Apply generated palette to My App",
+  "command": "/usr/local/bin/my-app-theme-apply",
+  "args": ["--mode", "material"]
+}
+```
+
+`inir-cli` exports the centralized contract to external targets via environment variables, including:
+
+- `INIR_OUTPUT_DIR`
+- `INIR_COLORS_JSON`
+- `INIR_PALETTE_JSON`
+- `INIR_TERMINAL_JSON`
+- `INIR_THEME_META_JSON`
+- `INIR_MATERIAL_SCSS`
+- `INIR_CONFIG_JSON`
+
+On apply/generation failures, `inir-cli` returns structured errors and also sends shell-friendly desktop notifications via `notify-send` when available.
+
+See `docs/TARGET_SPEC.md` for the full target spec reference and contributor guidance.
+
+### Control iNiR shell toggles via IPC
+
+`inir-cli` can call the same Quickshell IPC targets used by the upstream `inir` command:
+
+```bash
+# Common toggles
+inir-cli overview toggle
+inir-cli sidebar-right toggle
+inir-cli control-panel toggle
+inir-cli wallpaper-selector random
+inir-cli gamemode status
+
+# Show functions for a target
+inir-cli overview --help
+
+# Low-level passthrough form
+inir-cli ipc overview toggle
+```
+
+Kebab-case aliases are supported for upstream camelCase targets, for example `control-panel` → `controlPanel` and `wallpaper-selector` → `wallpaperSelector`.
+
+IPC runtime lookup checks `INIR_RUNTIME_DIR`, then `~/.config/quickshell/inir`, then system runtime locations. Override with `-c`/`--config` when needed:
+
+```bash
+inir-cli overview -c /path/to/quickshell/inir toggle
+```
+
 ### Auto-detect best scheme variant
 
 ```bash
@@ -80,9 +182,13 @@ Reads from `~/.config/inir/config.json` by default (same config as iNiR shell). 
 |---|---|
 | `generate` | Generate color palette from wallpaper image or seed color |
 | `scheme` | Apply a built-in static theme preset (44 themes), including `--random`; with `--apply`, writes compatibility files and applies targets with progress output |
-| `theme generate` | Full pipeline: generate palette from wallpaper |
-| `theme apply [targets...]` | Apply generated colors to specified targets |
+| `theme generate` | Alias-style generate entrypoint with theme namespace |
+| `theme apply [targets...]` | Apply already-generated contract to specified targets (`all` supported) |
+| `theme list-targets` | List built-in and auto-discovered external targets |
+| `theme scaffold-target <id>` | Create a JSON spec for an external theme target (one-file onboarding) |
 | `auto-detect [image]` | Detect the best Material You scheme variant for an image |
+| `ipc <target> <function>` | Low-level Quickshell IPC passthrough for iNiR shell targets |
+| `<target> <function>` | Upstream-style IPC/toggle command, e.g. `overview toggle`, `control-panel toggle`, `gamemode status` |
 
 ## Output Contract
 
@@ -104,12 +210,20 @@ Default output: `~/.local/state/quickshell/user/generated/`
 
 ## Architecture
 
+See [cmd/README.md](cmd/README.md) for a detailed developer guide to the command layer.
+
 ```
 inir-cli/
 ├── main.go                          # Entry point
-├── cmd/
+├── install.sh                       # Elegant installer (build, install, verify, PATH setup)
+├── cmd/                             # CLI command wiring + pipeline orchestration (see cmd/README.md)
 │   ├── root.go                      # CLI root (cobra)
-│   ├── theme.go                     # generate + apply commands
+│   ├── ipc.go                       # iNiR IPC target/toggle registry + Quickshell passthrough
+│   ├── theme.go                     # generate + apply command wiring
+│   ├── theme_pipeline_contract.go   # Centralized output contract
+│   ├── theme_pipeline_apply.go      # Unified apply orchestration (built-in + external)
+│   ├── theme_pipeline_targets.go    # External target discovery + execution
+│   ├── theme_pipeline_notify.go     # Notification/error surfacing integration
 │   ├── scheme.go                    # scheme command + terminal harmonization
 │   └── register.go                  # Target applier registration
 ├── internal/
@@ -157,6 +271,7 @@ inir-cli/
 | `vesktop` | Vesktop theme CSS generation from Material palette |
 | `pear-desktop` | YouTube Music desktop CSS generation + config registration + desktop override injection |
 | `sddm` | SDDM `theme.conf` color sync + wallpaper background copy |
+| iNiR IPC/toggles | Upstream-style Quickshell IPC commands for 45 shell targets, including kebab-case aliases, per-target help, and `settings` open compatibility |
 
 ### Partially Implemented / Parity Gaps
 
@@ -171,6 +286,8 @@ inir-cli/
 | Area | Remaining Work |
 |---|---|
 | Chrome policy setup | Automatic privileged policy directory setup is intentionally not handled; create writable policy dirs manually as needed |
+| External target schema evolution | Extend external target spec for richer input validation/hooks while preserving one-file onboarding simplicity |
+| IPC runtime lifecycle | IPC calls resolve and call an existing iNiR Quickshell payload, but do not yet fully mirror upstream auto-start/service lifecycle behavior |
 | Steam/Pear runtime behavior | CDP live-injection parity from shell scripts is not fully ported |
 | Vesktop/Discord | system24-style full parity behavior still incomplete |
 | Generator fidelity | Some script-level edge cases and output normalization still need parity passes |
@@ -180,6 +297,8 @@ inir-cli/
 ### High Priority
 
 - [ ] **GTK/KDE parity hardening** — add output-level regression tests and verify generated GTK/KDE artifacts against upstream iNiR references
+- [ ] **IPC lifecycle parity** — mirror upstream `inir` auto-start/service detection and retry behavior around Quickshell IPC calls
+- [ ] **External target contributor guide** — document one-file target authoring patterns, validation, and troubleshooting for community target additions
 - [ ] **Terminal matrix parity** — extend terminal writers to match the full upstream terminal coverage and edge-case formatting
 - [ ] **Editor generator fidelity** — deepen VS Code/Zed/OpenCode generation to match upstream theme generator richness
 

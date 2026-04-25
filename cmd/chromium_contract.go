@@ -1,3 +1,13 @@
+// File: chromium_contract.go
+//
+// Chromium browser theme contract generation.
+//
+// Writes two compatibility files:
+//   - chromium.theme: RGB seed values for Chromium-based browser theming
+//     (derived from surface_container_low → surface → background fallback)
+//   - color.txt: Hex seed color for iNiR-style browser/theming scripts
+//
+// These files are the source of truth for browser color application targets.
 package cmd
 
 import (
