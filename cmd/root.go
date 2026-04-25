@@ -36,7 +36,7 @@ var applyCmd = &cobra.Command{
 
 var themeCmd = &cobra.Command{
 	Use:   "theme",
-	Short: "Theme workflow commands (generate, apply, list-targets)",
+	Short: "Theme workflow commands (generate, apply, list-targets, scaffold-target)",
 }
 
 var autoDetectCmd = &cobra.Command{

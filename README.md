@@ -78,6 +78,16 @@ inir-cli theme apply all
 inir-cli theme list-targets
 ```
 
+### Scaffold a new external target spec
+
+```bash
+inir-cli theme scaffold-target my-app \
+  --command /usr/local/bin/my-app-theme-apply \
+  --description "Apply generated palette to My App" \
+  --arg --mode --arg material \
+  --input palette.json --input terminal.json
+```
+
 External target specs are auto-discovered from:
 
 - `${INIR_THEME_TARGETS_DIR}` (colon-separated dirs, optional)
@@ -108,6 +118,8 @@ Minimal external target spec example (`~/.config/inir/targets/my-app.json`):
 - `INIR_CONFIG_JSON`
 
 On apply/generation failures, `inir-cli` returns structured errors and also sends shell-friendly desktop notifications via `notify-send` when available.
+
+See `docs/TARGET_SPEC.md` for the full target spec reference and contributor guidance.
 
 ### Control iNiR shell toggles via IPC
 
@@ -156,6 +168,7 @@ Reads from `~/.config/inir/config.json` by default (same config as iNiR shell). 
 | `theme generate` | Alias-style generate entrypoint with theme namespace |
 | `theme apply [targets...]` | Apply already-generated contract to specified targets (`all` supported) |
 | `theme list-targets` | List built-in and auto-discovered external targets |
+| `theme scaffold-target <id>` | Create a JSON spec for an external theme target (one-file onboarding) |
 | `auto-detect [image]` | Detect the best Material You scheme variant for an image |
 | `ipc <target> <function>` | Low-level Quickshell IPC passthrough for iNiR shell targets |
 | `<target> <function>` | Upstream-style IPC/toggle command, e.g. `overview toggle`, `control-panel toggle`, `gamemode status` |

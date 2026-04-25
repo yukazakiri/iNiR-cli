@@ -37,11 +37,13 @@ func init() {
 	bindGenerateFlags(generateCmd)
 	bindGenerateFlags(themeGenerateCmd)
 	bindApplyFlags(themeApplyCmd)
-	bindApplyFlags(themeListTargetsCmd)
+	bindConfigFlag(themeListTargetsCmd)
+	bindConfigFlag(themeScaffoldTargetCmd)
 
 	themeCmd.AddCommand(themeApplyCmd)
 	themeCmd.AddCommand(themeGenerateCmd)
 	themeCmd.AddCommand(themeListTargetsCmd)
+	themeCmd.AddCommand(themeScaffoldTargetCmd)
 }
 
 var themeApplyCmd = &cobra.Command{
@@ -80,8 +82,12 @@ func bindGenerateFlags(cmd *cobra.Command) {
 }
 
 func bindApplyFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&flagConfig, "config", "", "Path to config.json")
+	bindConfigFlag(cmd)
 	cmd.Flags().StringVar(&flagOutputDir, "output", "", "Output directory for generated files")
+}
+
+func bindConfigFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&flagConfig, "config", "", "Path to config.json")
 }
 
 func resolveXDG() (configHome, stateHome, cacheHome string) {
