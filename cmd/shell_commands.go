@@ -25,6 +25,7 @@ import (
 func init() {
 	rootCmd.AddCommand(newTerminalCommand())
 	rootCmd.AddCommand(newCloseWindowCommand())
+	rootCmd.AddCommand(newBrowserCommand())
 }
 
 // ---------------------------------------------------------------------------
@@ -251,4 +252,83 @@ func closeFocusedWindow(focusedID int, appID string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// ---------------------------------------------------------------------------
+// browser
+// ---------------------------------------------------------------------------
+
+func newBrowserCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:                "browser [-c PATH] [url]",
+		Short:              "Launch the configured web browser",
+		DisableFlagParsing: true,
+		RunE:               runBrowserCommand,
+	}
+}
+
+func runBrowserCommand(cmd *cobra.Command, args []string) error {
+	configPath := ""
+	rest := args
+
+	// Parse -c/--config prefix
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-c", "--config":
+			if i+1 >= len(args) {
+				return fmt.Errorf("missing path after %s", args[i])
+			}
+			configPath = args[i+1]
+			i++
+		case "--":
+			rest = args[i+1:]
+			break
+		case "-h", "--help":
+			fmt.Fprintln(cmd.OutOrStdout(), "Usage: inir-cli browser [-c PATH] [url]")
+			return nil
+		default:
+			rest = args[i:]
+			break
+		}
+	}
+
+	browser := resolveBrowserFromConfig(configPath)
+	if browser == "" {
+		browser = "xdg-open"
+	}
+
+	execCmd := exec.Command(browser, rest...)
+	execCmd.Stdin = os.Stdin
+	execCmd.Stdout = os.Stdout
+	execCmd.Stderr = os.Stderr
+	return execCmd.Run()
+}
+
+func resolveBrowserFromConfig(configPath string) string {
+	if configPath == "" {
+		configHome := os.Getenv("XDG_CONFIG_HOME")
+		if configHome == "" {
+			configHome = filepath.Join(os.Getenv("HOME"), ".config")
+		}
+		configPath = filepath.Join(configHome, "inir", "config.json")
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return ""
+	}
+
+	var root map[string]interface{}
+	if err := json.Unmarshal(data, &root); err != nil {
+		return ""
+	}
+
+	// Check .apps.browser
+	if apps, ok := root["apps"].(map[string]interface{}); ok {
+		if b, ok := apps["browser"].(string); ok && b != "" {
+			return b
+		}
+	}
+
+	return ""
 }

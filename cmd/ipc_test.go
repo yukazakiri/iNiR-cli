@@ -73,7 +73,13 @@ func TestRunIPCCommandUsesRuntimeDirAndCallArgs(t *testing.T) {
 	}
 
 	originalRunner := ipcCommandRunner
-	t.Cleanup(func() { ipcCommandRunner = originalRunner })
+	originalChecker := ipcInstanceChecker
+	t.Cleanup(func() {
+		ipcCommandRunner = originalRunner
+		ipcInstanceChecker = originalChecker
+	})
+
+	ipcInstanceChecker = func(string) bool { return true }
 
 	var capturedDir string
 	var capturedArgs []string
@@ -83,7 +89,7 @@ func TestRunIPCCommandUsesRuntimeDirAndCallArgs(t *testing.T) {
 		return nil
 	}
 
-	err := runIPCCommand(runtimeDir, []string{"overview", "toggle"})
+	err := runIPCCommand(runtimeDir, []string{"overview", "toggle"}, "toggle")
 	if err != nil {
 		t.Fatalf("runIPCCommand returned error: %v", err)
 	}
@@ -103,7 +109,13 @@ func TestRawIPCCommandDoesNotNormalizeOrValidateTarget(t *testing.T) {
 	}
 
 	originalRunner := ipcCommandRunner
-	t.Cleanup(func() { ipcCommandRunner = originalRunner })
+	originalChecker := ipcInstanceChecker
+	t.Cleanup(func() {
+		ipcCommandRunner = originalRunner
+		ipcInstanceChecker = originalChecker
+	})
+
+	ipcInstanceChecker = func(string) bool { return true }
 
 	var capturedArgs []string
 	ipcCommandRunner = func(configDir string, callArgs []string) error {
@@ -130,7 +142,13 @@ func TestSettingsCommandDefaultsToOpen(t *testing.T) {
 	}
 
 	originalRunner := ipcCommandRunner
-	t.Cleanup(func() { ipcCommandRunner = originalRunner })
+	originalChecker := ipcInstanceChecker
+	t.Cleanup(func() {
+		ipcCommandRunner = originalRunner
+		ipcInstanceChecker = originalChecker
+	})
+
+	ipcInstanceChecker = func(string) bool { return true }
 
 	var capturedArgs []string
 	ipcCommandRunner = func(configDir string, callArgs []string) error {
@@ -163,7 +181,13 @@ func TestTargetCommandRunsCanonicalTargetFunction(t *testing.T) {
 	}
 
 	originalRunner := ipcCommandRunner
-	t.Cleanup(func() { ipcCommandRunner = originalRunner })
+	originalChecker := ipcInstanceChecker
+	t.Cleanup(func() {
+		ipcCommandRunner = originalRunner
+		ipcInstanceChecker = originalChecker
+	})
+
+	ipcInstanceChecker = func(string) bool { return true }
 
 	var capturedArgs []string
 	ipcCommandRunner = func(configDir string, callArgs []string) error {

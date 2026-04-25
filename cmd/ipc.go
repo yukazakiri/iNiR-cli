@@ -45,7 +45,12 @@ func runRawIPCCommand(cmd *cobra.Command, args []string) error {
 	if len(parsed.Rest) < 2 {
 		return fmt.Errorf("usage: inir-cli ipc <target> <function> [args...]")
 	}
-	return runIPCCommand(parsed.Config, parsed.Rest)
+	// For raw passthrough, extract function name for lifecycle decisions
+	functionName := ""
+	if len(parsed.Rest) >= 2 {
+		functionName = parsed.Rest[1]
+	}
+	return runIPCCommand(parsed.Config, parsed.Rest, functionName)
 }
 
 func newIPCTargetCommand(meta ipcTarget) *cobra.Command {
@@ -75,12 +80,13 @@ func runIPCTargetCommand(cmd *cobra.Command, meta ipcTarget, args []string) erro
 	if err := validateIPCFunction(meta, parsed.Rest[0]); err != nil {
 		return err
 	}
-	return runIPCCommand(parsed.Config, append([]string{meta.Name}, parsed.Rest...))
+	functionName := parsed.Rest[0]
+	return runIPCCommand(parsed.Config, append([]string{meta.Name}, parsed.Rest...), functionName)
 }
 
 func runDefaultIPCTargetAction(cmd *cobra.Command, meta ipcTarget, configDir string) error {
 	if meta.Name == "settings" {
-		return runIPCCommand(configDir, []string{meta.Name, "open"})
+		return runIPCCommand(configDir, []string{meta.Name, "open"}, "open")
 	}
 	printIPCTargetHelp(cmd.ErrOrStderr(), meta)
 	return fmt.Errorf("missing function for IPC target %q", meta.Name)
