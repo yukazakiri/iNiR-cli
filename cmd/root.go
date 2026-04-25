@@ -36,7 +36,7 @@ var applyCmd = &cobra.Command{
 
 var themeCmd = &cobra.Command{
 	Use:   "theme",
-	Short: "Full theme pipeline: generate + apply in one step",
+	Short: "Theme workflow commands (generate, apply, list-targets)",
 }
 
 var autoDetectCmd = &cobra.Command{

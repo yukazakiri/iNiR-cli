@@ -12,7 +12,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yukazakiri/inir-cli/internal/presets"
-	"github.com/yukazakiri/inir-cli/internal/target"
 )
 
 var (
@@ -74,8 +73,10 @@ func runScheme(cmd *cobra.Command, args []string) error {
 		_, stateHome, _ := resolveXDG()
 		outputDir = filepath.Join(stateHome, "quickshell", "user", "generated")
 	}
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("create output dir: %w", err)
+	contract := newOutputContract(outputDir)
+	if err := contract.EnsureDir(); err != nil {
+		notifyPipelineError("Scheme apply failed", err)
+		return err
 	}
 
 	colorsMap := preset.Colors.ToMap()
@@ -95,22 +96,6 @@ func runScheme(cmd *cobra.Command, args []string) error {
 		colorsJSON[k] = v
 	}
 
-	colorsPath := filepath.Join(outputDir, "colors.json")
-	palettePath := filepath.Join(outputDir, "palette.json")
-	terminalPath := filepath.Join(outputDir, "terminal.json")
-	metaPath := filepath.Join(outputDir, "theme-meta.json")
-	scssPath := filepath.Join(outputDir, "material_colors.scss")
-
-	if err := writeSchemeJSON(colorsPath, colorsJSON); err != nil {
-		return fmt.Errorf("write colors.json: %w", err)
-	}
-	if err := writeSchemeJSON(palettePath, colorsMap); err != nil {
-		return fmt.Errorf("write palette.json: %w", err)
-	}
-	if err := writeSchemeJSON(terminalPath, termColors); err != nil {
-		return fmt.Errorf("write terminal.json: %w", err)
-	}
-
 	meta := map[string]interface{}{
 		"source":       "preset",
 		"preset":       preset.ID,
@@ -120,22 +105,29 @@ func runScheme(cmd *cobra.Command, args []string) error {
 		"term_source":  termSource(preset.Colors.HasExplicitTerminalColors()),
 		"generated_by": "inir-cli",
 	}
-	if err := writeSchemeJSON(metaPath, meta); err != nil {
-		return fmt.Errorf("write theme-meta.json: %w", err)
+	if err := contract.WritePresetResult(colorsJSON, colorsMap, termColors, meta); err != nil {
+		notifyPipelineError("Scheme apply failed", err)
+		return err
 	}
 
-	if err := writeSchemeSCSS(scssPath, &preset.Colors, colorsMap, termColors); err != nil {
+	if err := writeSchemeSCSS(contract.SCSSPath, &preset.Colors, colorsMap, termColors); err != nil {
+		notifyPipelineError("Scheme apply warning", err)
 		fmt.Fprintf(os.Stderr, "[inir-cli] Warning: SCSS write failed: %v\n", err)
-	}
-	if err := writeChromiumThemeContracts(outputDir, colorsMap); err != nil {
-		fmt.Fprintf(os.Stderr, "[inir-cli] Warning: compatibility file write failed: %v\n", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "[inir-cli] Applied preset theme: %s (%s)\n", preset.Name, preset.ID)
 	fmt.Fprintf(os.Stderr, "[inir-cli] Mode: %s, Terminal: %s\n", meta["mode"], meta["term_source"])
 
 	if flagSchemeApply {
-		return applySchemeTargets(outputDir)
+		configPath := defaultConfigPath()
+		if flagSchemeConfig != "" {
+			configPath = flagSchemeConfig
+		}
+		cfg := loadConfig(configPath)
+		if err := applyThemeTargets(cfg, configPath, contract, allSchemeTargets()); err != nil {
+			notifyPipelineError("Scheme target apply failed", err)
+			return err
+		}
 	}
 
 	return nil
@@ -174,48 +166,6 @@ func listPresets() error {
 		fmt.Printf("  %-28s %s%s (%s)\n", p.ID, p.Name, tags, mode)
 	}
 	fmt.Fprintf(os.Stderr, "\n%d themes available\n", len(presets.Presets))
-	return nil
-}
-
-func applySchemeTargets(outputDir string) error {
-	colorsPath := filepath.Join(outputDir, "colors.json")
-	palettePath := filepath.Join(outputDir, "palette.json")
-	terminalPath := filepath.Join(outputDir, "terminal.json")
-	scssPath := filepath.Join(outputDir, "material_colors.scss")
-	metaPath := filepath.Join(outputDir, "theme-meta.json")
-
-	cfg := loadConfig(flagSchemeConfig)
-
-	ctx := &target.Context{
-		Config:       cfg,
-		ColorsPath:   colorsPath,
-		PalettePath:  palettePath,
-		TerminalPath: terminalPath,
-		SCSSPath:     scssPath,
-		MetaPath:     metaPath,
-		OutputDir:    outputDir,
-	}
-
-	targets := allSchemeTargets()
-	fmt.Fprintf(os.Stderr, "[inir-cli] Applying preset theme to %d targets...\n", len(targets))
-	failed := 0
-	for _, t := range targets {
-		applier := target.GetApplier(t)
-		if applier == nil {
-			fmt.Fprintf(os.Stderr, "[inir-cli] Target %s skipped: not registered\n", t)
-			continue
-		}
-		fmt.Fprintf(os.Stderr, "[inir-cli] Target %s: applying\n", t)
-		if err := applier.Apply(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "[inir-cli] Target %s: %v\n", t, err)
-			failed++
-			continue
-		}
-		fmt.Fprintf(os.Stderr, "[inir-cli] Target %s: done\n", t)
-	}
-	if failed > 0 {
-		fmt.Fprintf(os.Stderr, "[inir-cli] Applied preset theme with %d target error(s)\n", failed)
-	}
 	return nil
 }
 
