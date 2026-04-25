@@ -1,3 +1,11 @@
+// File: theme_targets_cmd.go
+//
+// Cobra commands for target management:
+//   - theme list-targets:     Lists all built-in and auto-discovered external targets
+//   - theme scaffold-target:  Creates a JSON spec file for a new external target
+//
+// Scaffold writes a validated JSON spec to the primary target discovery directory,
+// enabling one-file community onboarding for new theme targets.
 package cmd
 
 import (

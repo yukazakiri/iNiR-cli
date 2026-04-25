@@ -1,7 +1,13 @@
-package cmd
-
-// Generated from upstream iNiR IPC registry snapshots.
+// File: ipc_registry_generated.go
+//
+// AUTO-GENERATED from upstream iNiR IPC registry snapshots.
+// Do not manually edit — regenerate from upstream instead.
 // Manual customizations should live in ipc_registry_overrides.go.
+//
+// Contains:
+//   - generatedIPCKebabAliases: kebab-case → camelCase alias map
+//   - generatedIPCTargets:      full target definitions with functions
+package cmd
 
 var generatedIPCKebabAliases = map[string]string{
 	"alt-switcher":         "altSwitcher",

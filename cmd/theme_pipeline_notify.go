@@ -1,3 +1,10 @@
+// File: theme_pipeline_notify.go
+//
+// Desktop notification integration for pipeline errors.
+//
+// Uses notify-send (libnotify) to surface apply failures as desktop notifications.
+// Best-effort: silently skipped if notify-send is not available.
+// Notifications are truncated to 400 characters to avoid desktop notification limits.
 package cmd
 
 import (

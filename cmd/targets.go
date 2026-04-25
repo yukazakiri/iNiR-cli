@@ -1,3 +1,7 @@
+// File: targets.go
+//
+// Helper that returns all registered built-in target names, sorted alphabetically.
+// Used by "theme apply all" and "theme list-targets" to enumerate available targets.
 package cmd
 
 import (

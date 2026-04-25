@@ -1,3 +1,20 @@
+// Package cmd wires all cobra CLI commands and orchestrates the theme pipeline.
+//
+// The command tree:
+//
+//	inir-cli generate          — Generate palette from wallpaper/seed color
+//	inir-cli apply [targets]   — Redirect to theme apply
+//	inir-cli scheme [name]     — Apply a built-in preset theme
+//	inir-cli auto-detect [img] — Detect best scheme variant
+//	inir-cli theme generate    — Generate (namespaced)
+//	inir-cli theme apply [t]   — Apply generated colors to targets
+//	inir-cli theme list-targets — List built-in + external targets
+//	inir-cli theme scaffold-target <id> — Create external target spec
+//	inir-cli ipc <t> <fn>      — Raw Quickshell IPC passthrough
+//	inir-cli <target> <fn>     — Upstream-style IPC (e.g. overview toggle)
+//
+// Heavy computation lives in internal/; this package handles flags, config,
+// XDG resolution, and pipeline orchestration only.
 package cmd
 
 import (

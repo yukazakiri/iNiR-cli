@@ -1,3 +1,8 @@
+// File: ipc_help.go
+//
+// Per-target help formatting for IPC commands.
+// Prints target name, description, available functions with args,
+// family, and example keybinds.
 package cmd
 
 import (

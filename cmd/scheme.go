@@ -1,3 +1,15 @@
+// File: scheme.go
+//
+// The "scheme" command applies one of 44+ built-in static theme presets
+// (Catppuccin, Gruvbox, Tokyo Night, etc.) without requiring a wallpaper.
+//
+// Key functions:
+//   - runScheme:           Main entry — resolves preset, writes contract, optionally applies
+//   - resolveSchemePreset: Picks a preset by name or randomly
+//   - generatePresetTerminalColors: Harmonizes terminal 16-color palette from preset accent
+//
+// Color math helpers (hexToRGB, rgbToHSL, hslToRGB) live here for
+// terminal harmonization. They are intentionally simple and self-contained.
 package cmd
 
 import (

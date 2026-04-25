@@ -1,3 +1,16 @@
+// File: theme_pipeline_targets.go
+//
+// External target discovery, validation, and execution.
+//
+// Discovery searches these directories in order:
+//   1. INIR_THEME_TARGETS_DIR (colon-separated, from env)
+//   2. $(dirname config.json)/targets/
+//   3. ~/.config/inir/targets/
+//   4. ~/.config/inir-cli/targets/
+//
+// Each .json file defines an external target with id, command, args, inputs, and env.
+// The "command" type is the only supported type currently.
+// External targets receive contract paths via environment variables (INIR_OUTPUT_DIR, etc.).
 package cmd
 
 import (

@@ -1,3 +1,15 @@
+// File: ipc.go
+//
+// IPC command wiring for iNiR Quickshell shell communication.
+//
+// Two invocation modes:
+//   - inir-cli ipc <target> <function> [args]  — Raw passthrough (no validation)
+//   - inir-cli <target> <function> [args]      — Validated, with kebab-case aliases
+//
+// The raw "ipc" subcommand skips normalization and validation so future
+// shell functions aren't blocked by an outdated CLI registry.
+// Target subcommands (e.g. "overview toggle") validate the function name
+// against the registry and provide per-target help output.
 package cmd
 
 import (

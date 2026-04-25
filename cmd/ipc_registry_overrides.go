@@ -1,3 +1,13 @@
+// File: ipc_registry_overrides.go
+//
+// Manual override layer for the IPC registry.
+//
+// To add or modify a target without touching generated code:
+//   1. Add an entry to ipcTargetOverrides (key = target name)
+//   2. Add kebab-case aliases to ipcAliasOverrides if needed
+//
+// The buildIPCTargets() and buildIPCAliases() functions merge
+// overrides on top of the generated data at init time.
 package cmd
 
 var ipcAliasOverrides = map[string]string{}

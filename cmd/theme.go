@@ -1,3 +1,15 @@
+// File: theme.go
+//
+// Theme generate and apply commands. This file defines the cobra command tree
+// for the "theme" namespace, binds all generation/apply flags, and contains
+// the core orchestration functions:
+//
+//   - runGenerate:     Full palette generation pipeline (image/seed → JSON/SCSS)
+//   - runThemeGenerate: Alias that delegates to runGenerate
+//   - runThemeApply:   Apply already-generated colors to specified targets
+//
+// Flag resolution follows XDG conventions with config.json fallbacks.
+// All output writes go through the centralized outputContract.
 package cmd
 
 import (

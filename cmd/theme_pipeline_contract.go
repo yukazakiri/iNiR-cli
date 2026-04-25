@@ -1,3 +1,16 @@
+// File: theme_pipeline_contract.go
+//
+// Centralized output contract for all generation paths.
+//
+// The outputContract defines the file layout for generated theme output:
+//   - colors.json   — Full color set (material tokens + terminal 16-color palette)
+//   - palette.json  — Material Design 3 semantic tokens only
+//   - terminal.json — Terminal 16-color ANSI palette (term0–term15)
+//   - theme-meta.json — Source metadata (preset/wallpaper, mode, scheme)
+//   - material_colors.scss — SCSS variables for GTK theming
+//
+// All generation commands (generate, scheme) write through this contract
+// to ensure consistent file layout regardless of the generation path.
 package cmd
 
 import (

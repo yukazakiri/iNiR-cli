@@ -1,3 +1,15 @@
+// File: ipc_runtime.go
+//
+// Runtime directory resolution and Quickshell binary execution for IPC calls.
+//
+// Resolution order for the iNiR shell payload:
+//   1. Explicit -c/--config path
+//   2. INIR_RUNTIME_DIR environment variable
+//   3. XDG_CONFIG_HOME/quickshell/inir
+//   4. INIR_SYSTEM_RUNTIME_DIR (default: /usr/local/share/quickshell/inir)
+//   5. INIR_FALLBACK_SYSTEM_RUNTIME_DIR (default: /usr/share/quickshell/inir)
+//
+// The qs binary path is resolved via INIR_QS_BIN env var, falling back to /usr/bin/qs.
 package cmd
 
 import (

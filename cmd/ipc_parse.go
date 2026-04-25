@@ -1,3 +1,11 @@
+// File: ipc_parse.go
+//
+// Argument parsing and validation for IPC commands.
+//
+//   - parseIPCPrefixArgs:   Extracts -c/--config and --help from args, returns rest
+//   - normalizeIPCTarget:   Resolves kebab-case aliases to canonical camelCase names
+//   - validateIPCFunction:  Checks that a function name exists for a given target
+//   - firstSentence:         Truncates description text at the first period
 package cmd
 
 import (

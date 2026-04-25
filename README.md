@@ -22,6 +22,25 @@ It can also apply any of 44 built-in static theme presets (Catppuccin, Gruvbox, 
 
 ## Installation
 
+### Quick install (recommended)
+
+```bash
+./install.sh
+```
+
+The installer builds from source, installs to `~/.local/bin/inir-cli`, and ensures it's on your `PATH`. It supports:
+
+| Flag | Description |
+|---|---|
+| `--prefix DIR` | Install to `DIR/bin` (default: `~/.local`) |
+| `--uninstall` | Remove inir-cli |
+| `--dry-run` | Show what would happen without doing it |
+| `--verbose` | Verbose output |
+
+Requires Go 1.24+.
+
+### Manual build
+
 ```bash
 go build -o bin/inir-cli .
 ```
@@ -33,8 +52,6 @@ mkdir -p ~/.local/bin && go build -o ~/.local/bin/inir-cli . && chmod +x ~/.loca
 ```
 
 Make sure `~/.local/bin` is on your `PATH`.
-
-Requires Go 1.24+.
 
 ## Usage
 
@@ -193,10 +210,13 @@ Default output: `~/.local/state/quickshell/user/generated/`
 
 ## Architecture
 
+See [cmd/README.md](cmd/README.md) for a detailed developer guide to the command layer.
+
 ```
 inir-cli/
 ├── main.go                          # Entry point
-├── cmd/
+├── install.sh                       # Elegant installer (build, install, verify, PATH setup)
+├── cmd/                             # CLI command wiring + pipeline orchestration (see cmd/README.md)
 │   ├── root.go                      # CLI root (cobra)
 │   ├── ipc.go                       # iNiR IPC target/toggle registry + Quickshell passthrough
 │   ├── theme.go                     # generate + apply command wiring

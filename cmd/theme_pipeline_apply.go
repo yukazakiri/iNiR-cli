@@ -1,3 +1,12 @@
+// File: theme_pipeline_apply.go
+//
+// Unified apply orchestration for theme targets.
+//
+// applyThemeTargets resolves the requested target list (including "all"),
+// runs each built-in Applier and external target command, collects failures,
+// and surfaces errors via desktop notifications.
+//
+// This is the single entry point used by both "theme apply" and "scheme --apply".
 package cmd
 
 import (

@@ -1,3 +1,11 @@
+// File: register.go
+//
+// Built-in target registration. Each target name maps to a factory function
+// that returns a fresh Applier instance. Add new targets here after creating
+// the implementation in internal/target/<name>/.
+//
+// Current targets: gtk-kde, terminals, chrome, editors, zed, spicetify,
+// steam, vesktop, pear-desktop, sddm.
 package cmd
 
 import (
