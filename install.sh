@@ -61,7 +61,12 @@ log_success() { printf "${GREEN}[ OK ]${NC} %s\n" "$*"; }
 log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
 log_error()   { printf "${RED}[ERR ]${NC} %s\n" "$*" >&2; }
 log_step()    { printf "${CYAN}[....]${NC} %s\n" "$*"; }
-log_verbose() { [[ "$VERBOSE" -eq 1 ]] && printf "${DIM}%s${NC}\n" "$*"; }
+log_verbose() {
+  if [[ "$VERBOSE" -eq 1 ]]; then
+    printf "${DIM}%s${NC}\n" "$*"
+  fi
+  return 0
+}
 
 die() {
   log_error "$*"

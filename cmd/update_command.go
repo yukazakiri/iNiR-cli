@@ -115,6 +115,12 @@ func runCLIUpdate(cmd *cobra.Command, version string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "Updating inir-cli: go install %s\n", target)
 
 	installCmd := exec.Command("go", "install", target)
+	installCmd.Env = os.Environ()
+	if _, ok := os.LookupEnv("GOBIN"); !ok {
+		if installDir, err := resolveCurrentInstallDir(); err == nil && installDir != "" {
+			installCmd.Env = append(installCmd.Env, "GOBIN="+installDir)
+		}
+	}
 	installCmd.Stdin = os.Stdin
 	installCmd.Stdout = os.Stdout
 	installCmd.Stderr = os.Stderr
@@ -124,6 +130,19 @@ func runCLIUpdate(cmd *cobra.Command, version string) error {
 
 	fmt.Fprintln(cmd.OutOrStdout(), "inir-cli update complete")
 	return nil
+}
+
+func resolveCurrentInstallDir() (string, error) {
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+
+	if resolved, err := filepath.EvalSymlinks(exePath); err == nil && resolved != "" {
+		exePath = resolved
+	}
+
+	return filepath.Dir(exePath), nil
 }
 
 func runSetupCommand(setupDir string, args []string) error {
