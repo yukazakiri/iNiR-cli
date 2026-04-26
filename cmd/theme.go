@@ -1,3 +1,15 @@
+// File: theme.go
+//
+// Theme generate and apply commands. This file defines the cobra command tree
+// for the "theme" namespace, binds all generation/apply flags, and contains
+// the core orchestration functions:
+//
+//   - runGenerate:     Full palette generation pipeline (image/seed → JSON/SCSS)
+//   - runThemeGenerate: Alias that delegates to runGenerate
+//   - runThemeApply:   Apply already-generated colors to specified targets
+//
+// Flag resolution follows XDG conventions with config.json fallbacks.
+// All output writes go through the centralized outputContract.
 package cmd
 
 import (
@@ -5,12 +17,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/yukazakiri/inir-cli/internal/color"
 	"github.com/yukazakiri/inir-cli/internal/config"
-	"github.com/yukazakiri/inir-cli/internal/target"
 	"github.com/yukazakiri/inir-cli/internal/template"
 )
 
@@ -32,47 +42,66 @@ var (
 	flagColorStrength      float64
 	flagSoften             bool
 	flagBlendBgFg          bool
-	flagSkipConfigWrite    bool
 	flagForceDarkTerminal  bool
+	flagTermScheme         string
 )
 
 func init() {
-	generateCmd.Flags().StringVar(&flagImage, "image", "", "Path to wallpaper image")
-	generateCmd.Flags().StringVar(&flagColor, "color", "", "Hex color seed (e.g. #FF6B35)")
-	generateCmd.Flags().StringVar(&flagMode, "mode", "", "dark or light (auto-detect if empty)")
-	generateCmd.Flags().StringVar(&flagScheme, "scheme", "auto", "Material You scheme variant")
-	generateCmd.Flags().StringVar(&flagConfig, "config", "", "Path to config.json")
-	generateCmd.Flags().StringVar(&flagTemplateDir, "templates", "", "Template directory (matugen/)")
-	generateCmd.Flags().StringVar(&flagOutputDir, "output", "", "Output directory for generated files")
-	generateCmd.Flags().StringVar(&flagCache, "cache", "", "Path to store seed color cache")
-	generateCmd.Flags().Float64Var(&flagHarmony, "harmony", 0.4, "Color hue shift towards accent (0-1)")
-	generateCmd.Flags().Float64Var(&flagTermSaturation, "term-saturation", 0.65, "Terminal color saturation (0-1)")
-	generateCmd.Flags().Float64Var(&flagTermBrightness, "term-brightness", 0.60, "Terminal color brightness (0-1)")
-	generateCmd.Flags().Float64Var(&flagTermBgBrightness, "term-bg-brightness", 0.50, "Terminal background brightness (0-1)")
-	generateCmd.Flags().Float64Var(&flagHarmonizeThreshold, "harmonize-threshold", 100, "Max threshold angle for hue shift")
-	generateCmd.Flags().Float64Var(&flagTermFgBoost, "term-fg-boost", 0.35, "Terminal foreground boost")
-	generateCmd.Flags().Float64Var(&flagColorStrength, "color-strength", 1.0, "Chroma multiplier for accents")
-	generateCmd.Flags().BoolVar(&flagSoften, "soften", false, "Soften generated colors")
-	generateCmd.Flags().BoolVar(&flagBlendBgFg, "blend-bg-fg", false, "Shift terminal bg/fg towards accent")
-	generateCmd.Flags().BoolVar(&flagSkipConfigWrite, "skip-config-write", false, "Don't update config.json wallpaper path")
-	generateCmd.Flags().BoolVar(&flagForceDarkTerminal, "force-dark-terminal", false, "Force dark mode for terminal colors")
+	bindGenerateFlags(generateCmd)
+	bindGenerateFlags(themeGenerateCmd)
+	bindApplyFlags(themeApplyCmd)
+	bindConfigFlag(themeListTargetsCmd)
+	bindConfigFlag(themeScaffoldTargetCmd)
 
 	themeCmd.AddCommand(themeApplyCmd)
 	themeCmd.AddCommand(themeGenerateCmd)
+	themeCmd.AddCommand(themeListTargetsCmd)
+	themeCmd.AddCommand(themeScaffoldTargetCmd)
 }
 
 var themeApplyCmd = &cobra.Command{
 	Use:   "apply [targets...]",
-	Short: "Generate colors and apply to specified targets",
-	Long:  `Full pipeline: generate Material You colors from wallpaper, then apply to specified targets.`,
+	Short: "Apply existing generated colors to specified targets",
+	Long:  `Apply the current generated output contract (colors.json/palette.json/terminal.json) to one or more targets.`,
 	Args:  cobra.MinimumNArgs(1),
 	RunE:  runThemeApply,
 }
 
 var themeGenerateCmd = &cobra.Command{
 	Use:   "generate",
-	Short: "Generate color palette (full pipeline)",
+	Short: "Generate color palette using theme namespace",
 	RunE:  runThemeGenerate,
+}
+
+func bindGenerateFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&flagImage, "image", "", "Path to wallpaper image")
+	cmd.Flags().StringVar(&flagColor, "color", "", "Hex color seed (e.g. #FF6B35)")
+	cmd.Flags().StringVar(&flagMode, "mode", "", "dark or light (auto-detect if empty)")
+	cmd.Flags().StringVar(&flagScheme, "scheme", "auto", "Material You scheme variant")
+	cmd.Flags().StringVar(&flagConfig, "config", "", "Path to config.json")
+	cmd.Flags().StringVar(&flagTemplateDir, "templates", "", "Template directory (matugen/)")
+	cmd.Flags().StringVar(&flagOutputDir, "output", "", "Output directory for generated files")
+	cmd.Flags().StringVar(&flagCache, "cache", "", "Path to store seed color cache")
+	cmd.Flags().Float64Var(&flagHarmony, "harmony", 0.4, "Color hue shift towards accent (0-1)")
+	cmd.Flags().Float64Var(&flagTermSaturation, "term-saturation", 0.65, "Terminal color saturation (0-1)")
+	cmd.Flags().Float64Var(&flagTermBrightness, "term-brightness", 0.60, "Terminal color brightness (0-1)")
+	cmd.Flags().Float64Var(&flagTermBgBrightness, "term-bg-brightness", 0.50, "Terminal background brightness (0-1)")
+	cmd.Flags().Float64Var(&flagHarmonizeThreshold, "harmonize-threshold", 100, "Max threshold angle for hue shift")
+	cmd.Flags().Float64Var(&flagTermFgBoost, "term-fg-boost", 0.35, "Terminal foreground boost")
+	cmd.Flags().Float64Var(&flagColorStrength, "color-strength", 1.0, "Chroma multiplier for accents")
+	cmd.Flags().BoolVar(&flagSoften, "soften", false, "Soften generated colors")
+	cmd.Flags().BoolVar(&flagBlendBgFg, "blend-bg-fg", false, "Shift terminal bg/fg towards accent")
+	cmd.Flags().BoolVar(&flagForceDarkTerminal, "force-dark-terminal", false, "Force dark mode for terminal colors")
+	cmd.Flags().StringVar(&flagTermScheme, "termscheme", "", "Path to base terminal scheme JSON (dark/light objects)")
+}
+
+func bindApplyFlags(cmd *cobra.Command) {
+	bindConfigFlag(cmd)
+	cmd.Flags().StringVar(&flagOutputDir, "output", "", "Output directory for generated files")
+}
+
+func bindConfigFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&flagConfig, "config", "", "Path to config.json")
 }
 
 func resolveXDG() (configHome, stateHome, cacheHome string) {
@@ -162,10 +191,15 @@ func resolveOutputDir() string {
 }
 
 func runGenerate(cmd *cobra.Command, args []string) error {
-	cfg := loadConfig(flagConfig)
-	outputDir := resolveOutputDir()
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("create output dir: %w", err)
+	configPath := defaultConfigPath()
+	if flagConfig != "" {
+		configPath = flagConfig
+	}
+	cfg := loadConfig(configPath)
+	contract := newOutputContract(resolveOutputDir())
+	if err := contract.EnsureDir(); err != nil {
+		notifyPipelineError("Theme generate failed", err)
+		return err
 	}
 
 	scheme := flagScheme
@@ -232,29 +266,43 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 		ColorStrength:      colorStrength,
 		Soften:             flagSoften || cfg.SoftenColors,
 		BlendBgFg:          flagBlendBgFg,
+		TermSchemePath:     flagTermScheme,
 	}
 
 	result, err := color.Generate(genOpts)
 	if err != nil {
-		return fmt.Errorf("color generation failed: %w", err)
+		wrapped := fmt.Errorf("color generation failed: %w", err)
+		notifyPipelineError("Theme generate failed", wrapped)
+		return wrapped
 	}
 
 	if flagCache != "" {
 		os.WriteFile(flagCache, []byte(result.SeedColor), 0644)
 	}
 
-	colorsPath := filepath.Join(outputDir, "colors.json")
-	palettePath := filepath.Join(outputDir, "palette.json")
-	terminalPath := filepath.Join(outputDir, "terminal.json")
-	metaPath := filepath.Join(outputDir, "theme-meta.json")
-	scssPath := filepath.Join(outputDir, "material_colors.scss")
-
-	if err := result.WriteJSON(colorsPath, palettePath, terminalPath, metaPath); err != nil {
-		return fmt.Errorf("write JSON: %w", err)
+	if err := result.WriteJSON(contract.ColorsPath, contract.PalettePath, contract.TerminalPath, contract.MetaPath); err != nil {
+		wrapped := fmt.Errorf("write JSON: %w", err)
+		notifyPipelineError("Theme generate failed", wrapped)
+		return wrapped
 	}
 
-	if err := result.WriteSCSS(scssPath); err != nil {
+	if err := result.WriteSCSS(contract.SCSSPath); err != nil {
+		notifyPipelineError("Theme generate warning", err)
 		fmt.Fprintf(os.Stderr, "[inir-cli] Warning: SCSS write failed: %v\n", err)
+	}
+
+	// Write chromium.theme and render templates using the ORIGINAL result
+	// (upstream switchwall.sh runs these in the first pass only).
+	// Must happen BEFORE the optional forced-dark terminal overwrite.
+	if err := writeChromiumThemeContracts(contract.OutputDir, result.Palette); err != nil {
+		notifyPipelineError("Theme generate warning", err)
+		fmt.Fprintf(os.Stderr, "[inir-cli] Warning: chromium.theme contract write failed: %v\n", err)
+	}
+
+	if flagTemplateDir != "" {
+		if err := template.RenderAll(flagTemplateDir, result); err != nil {
+			fmt.Fprintf(os.Stderr, "[inir-cli] Warning: template rendering failed: %v\n", err)
+		}
 	}
 
 	if flagForceDarkTerminal {
@@ -262,19 +310,9 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 		darkOpts.Mode = "dark"
 		darkResult, err := color.Generate(darkOpts)
 		if err == nil {
-			darkResult.WriteTerminalJSON(terminalPath)
-			darkResult.WriteSCSS(scssPath)
+			darkResult.WriteTerminalJSON(contract.TerminalPath)
+			darkResult.WriteSCSS(contract.SCSSPath)
 			*result = *darkResult
-		}
-	}
-
-	if err := writeChromiumThemeContracts(outputDir, result.Palette); err != nil {
-		fmt.Fprintf(os.Stderr, "[inir-cli] Warning: chromium.theme contract write failed: %v\n", err)
-	}
-
-	if flagTemplateDir != "" {
-		if err := template.RenderAll(flagTemplateDir, result); err != nil {
-			fmt.Fprintf(os.Stderr, "[inir-cli] Warning: template rendering failed: %v\n", err)
 		}
 	}
 
@@ -287,44 +325,20 @@ func runThemeGenerate(cmd *cobra.Command, args []string) error {
 }
 
 func runThemeApply(cmd *cobra.Command, args []string) error {
-	cfg := loadConfig(flagConfig)
-	outputDir := resolveOutputDir()
-
-	colorsPath := filepath.Join(outputDir, "colors.json")
-	palettePath := filepath.Join(outputDir, "palette.json")
-	terminalPath := filepath.Join(outputDir, "terminal.json")
-	scssPath := filepath.Join(outputDir, "material_colors.scss")
-	metaPath := filepath.Join(outputDir, "theme-meta.json")
-
-	if _, err := os.Stat(colorsPath); os.IsNotExist(err) {
-		return fmt.Errorf("no colors.json found — run 'generate' first")
+	configPath := defaultConfigPath()
+	if flagConfig != "" {
+		configPath = flagConfig
+	}
+	cfg := loadConfig(configPath)
+	contract := newOutputContract(resolveOutputDir())
+	if err := contract.RequireColors(); err != nil {
+		notifyPipelineError("Theme apply failed", err)
+		return err
 	}
 
-	targetList := args
-	if len(targetList) == 1 && targetList[0] == "all" {
-		targetList = allRegisteredTargets()
-	}
-
-	ctx := &target.Context{
-		Config:       cfg,
-		ColorsPath:   colorsPath,
-		PalettePath:  palettePath,
-		TerminalPath: terminalPath,
-		SCSSPath:     scssPath,
-		MetaPath:     metaPath,
-		OutputDir:    outputDir,
-	}
-
-	for _, t := range targetList {
-		name := strings.TrimSpace(t)
-		applier := target.GetApplier(name)
-		if applier == nil {
-			fmt.Fprintf(os.Stderr, "[inir-cli] Unknown target: %s\n", name)
-			continue
-		}
-		if err := applier.Apply(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "[inir-cli] Target %s failed: %v\n", name, err)
-		}
+	if err := applyThemeTargets(cfg, configPath, contract, args); err != nil {
+		notifyPipelineError("Theme apply failed", err)
+		return err
 	}
 
 	return nil

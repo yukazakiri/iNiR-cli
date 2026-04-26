@@ -1,8 +1,10 @@
 package material
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 )
 
 var defaultDarkTerms = map[string]string{
@@ -25,6 +27,12 @@ func generateTerminalColors(materialColors map[string]string, primaryARGB int, o
 	termSource := defaultDarkTerms
 	if !isDark {
 		termSource = defaultLightTerms
+	}
+
+	if opts.TermSchemePath != "" {
+		if loaded := loadTermScheme(opts.TermSchemePath, isDark); loaded != nil {
+			termSource = loaded
+		}
 	}
 
 	if opts.Scheme == "scheme-monochrome" {
@@ -141,6 +149,30 @@ func generateTerminalColors(materialColors map[string]string, primaryARGB int, o
 	}
 
 	return result
+}
+
+func loadTermScheme(path string, isDark bool) map[string]string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var root map[string]map[string]string
+	if err := json.Unmarshal(data, &root); err != nil {
+		// Try top-level map directly (legacy format)
+		var direct map[string]string
+		if err := json.Unmarshal(data, &direct); err != nil {
+			return nil
+		}
+		return direct
+	}
+	modeKey := "light"
+	if isDark {
+		modeKey = "dark"
+	}
+	if terms, ok := root[modeKey]; ok {
+		return terms
+	}
+	return nil
 }
 
 func getPrimaryColor(colors map[string]string) string {
