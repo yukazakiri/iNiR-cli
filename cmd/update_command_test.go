@@ -13,9 +13,11 @@ import (
 func TestRunUpdateCommandStripsConfigFlag(t *testing.T) {
 	origResolver := setupDirResolver
 	origRunner := setupCommandRunner
+	origCLIUpdater := cliUpdateRunner
 	defer func() {
 		setupDirResolver = origResolver
 		setupCommandRunner = origRunner
+		cliUpdateRunner = origCLIUpdater
 	}()
 
 	setupDirResolver = func() (string, error) {
@@ -27,6 +29,10 @@ func TestRunUpdateCommandStripsConfigFlag(t *testing.T) {
 	setupCommandRunner = func(dir string, args []string) error {
 		gotDir = dir
 		gotArgs = append([]string{}, args...)
+		return nil
+	}
+	cliUpdateRunner = func(*cobra.Command, string) error {
+		t.Fatalf("cli update should not be called for upstream flow")
 		return nil
 	}
 
@@ -49,6 +55,53 @@ func TestRunUpdateCommandMissingConfigPath(t *testing.T) {
 	err := runUpdateCommand(&cobra.Command{}, []string{"-c"})
 	if err == nil {
 		t.Fatalf("expected error for missing -c value")
+	}
+}
+
+func TestRunUpdateCommandCLIFlow(t *testing.T) {
+	origResolver := setupDirResolver
+	origRunner := setupCommandRunner
+	origCLIUpdater := cliUpdateRunner
+	defer func() {
+		setupDirResolver = origResolver
+		setupCommandRunner = origRunner
+		cliUpdateRunner = origCLIUpdater
+	}()
+
+	setupDirResolver = func() (string, error) {
+		t.Fatalf("setup resolver should not run for --cli")
+		return "", nil
+	}
+	setupCommandRunner = func(string, []string) error {
+		t.Fatalf("upstream setup runner should not run for --cli")
+		return nil
+	}
+
+	called := false
+	gotVersion := ""
+	cliUpdateRunner = func(_ *cobra.Command, version string) error {
+		called = true
+		gotVersion = version
+		return nil
+	}
+
+	err := runUpdateCommand(&cobra.Command{}, []string{"--cli", "--version", "v1.2.3"})
+	if err != nil {
+		t.Fatalf("runUpdateCommand returned error: %v", err)
+	}
+
+	if !called {
+		t.Fatalf("expected cli updater to be called")
+	}
+	if gotVersion != "v1.2.3" {
+		t.Fatalf("expected version v1.2.3, got %q", gotVersion)
+	}
+}
+
+func TestRunUpdateCommandVersionWithoutCLI(t *testing.T) {
+	err := runUpdateCommand(&cobra.Command{}, []string{"--version", "v1.2.3"})
+	if err == nil {
+		t.Fatalf("expected error when --version is used without --cli")
 	}
 }
 
