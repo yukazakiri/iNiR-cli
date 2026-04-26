@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version number (example: 1.2.3)
+        description: "Version number (example: 1.2.3)"
         required: true
         type: string
       prerelease:
-        description: Mark this release as prerelease
+        description: "Mark this release as prerelease"
         required: false
         default: false
         type: boolean
