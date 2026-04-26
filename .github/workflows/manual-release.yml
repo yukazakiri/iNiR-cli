@@ -1,0 +1,66 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version number (example: 1.2.3)
+        required: true
+        type: string
+      prerelease:
+        description: Mark this release as prerelease
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Normalize and validate version
+        id: version
+        shell: bash
+        run: |
+          version='${{ inputs.version }}'
+          version="${version#v}"
+
+          if [[ -z "$version" ]]; then
+            echo "::error::Version cannot be empty."
+            exit 1
+          fi
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Version must look like 1.2.3 or 1.2.3-rc.1"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure tag does not exist
+        shell: bash
+        run: |
+          if git rev-parse -q --verify "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null; then
+            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists."
+            exit 1
+          fi
+
+      - name: Create GitHub release with generated notes
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease }}
