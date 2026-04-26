@@ -20,7 +20,10 @@ var (
 	setupDirResolver    = resolveSetupDir
 	setupCommandRunner  = runSetupCommand
 	setupLauncherFinder = resolveExecutableDir
+	cliUpdateRunner     = runCLIUpdate
 )
+
+const inirCLIModule = "github.com/yukazakiri/inir-cli"
 
 func init() {
 	rootCmd.AddCommand(newUpdateCommand())
@@ -28,8 +31,8 @@ func init() {
 
 func newUpdateCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:                "update [-c PATH] [-y|--yes] [-q|--quiet] [--local]",
-		Short:              "Run upstream maintenance update flow",
+		Use:                "update [-c PATH] [--cli [--version VERSION]] [-y|--yes] [-q|--quiet] [--local]",
+		Short:              "Update upstream iNiR or inir-cli itself",
 		DisableFlagParsing: true,
 		RunE:               runUpdateCommand,
 	}
@@ -42,8 +45,19 @@ func runUpdateCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(forwarded) > 0 && isHelpFlag(forwarded[0]) {
-		fmt.Fprintln(cmd.OutOrStdout(), "Usage: inir-cli update [-c PATH] [-y|--yes] [-q|--quiet] [--local]")
+		fmt.Fprintln(cmd.OutOrStdout(), "Usage: inir-cli update [-c PATH] [--cli [--version VERSION]] [-y|--yes] [-q|--quiet] [--local]")
+		fmt.Fprintln(cmd.OutOrStdout(), "  default: forwards to upstream setup update")
+		fmt.Fprintln(cmd.OutOrStdout(), "  --cli:   updates inir-cli itself via `go install github.com/yukazakiri/inir-cli@latest`")
 		return nil
+	}
+
+	updateCLI, version, setupForwarded, err := parseUpdateArgs(forwarded)
+	if err != nil {
+		return err
+	}
+
+	if updateCLI {
+		return cliUpdateRunner(cmd, version)
 	}
 
 	setupDir, err := setupDirResolver()
@@ -51,8 +65,65 @@ func runUpdateCommand(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	setupArgs := append([]string{"update"}, forwarded...)
+	setupArgs := append([]string{"update"}, setupForwarded...)
 	return setupCommandRunner(setupDir, setupArgs)
+}
+
+func parseUpdateArgs(args []string) (bool, string, []string, error) {
+	updateCLI := false
+	version := ""
+	setupForwarded := make([]string, 0, len(args))
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--cli", "--self":
+			updateCLI = true
+		case "--upstream":
+			updateCLI = false
+		case "--version":
+			if i+1 >= len(args) {
+				return false, "", nil, fmt.Errorf("missing version after --version")
+			}
+			version = args[i+1]
+			i++
+		default:
+			setupForwarded = append(setupForwarded, args[i])
+		}
+	}
+
+	if version != "" && !updateCLI {
+		return false, "", nil, fmt.Errorf("--version is only valid with --cli")
+	}
+
+	if updateCLI && len(setupForwarded) > 0 {
+		return false, "", nil, fmt.Errorf("unsupported args for --cli: %v", setupForwarded)
+	}
+
+	return updateCLI, version, setupForwarded, nil
+}
+
+func runCLIUpdate(cmd *cobra.Command, version string) error {
+	if _, err := exec.LookPath("go"); err != nil {
+		return fmt.Errorf("go is required for --cli update")
+	}
+
+	if version == "" {
+		version = "latest"
+	}
+
+	target := fmt.Sprintf("%s@%s", inirCLIModule, version)
+	fmt.Fprintf(cmd.OutOrStdout(), "Updating inir-cli: go install %s\n", target)
+
+	installCmd := exec.Command("go", "install", target)
+	installCmd.Stdin = os.Stdin
+	installCmd.Stdout = os.Stdout
+	installCmd.Stderr = os.Stderr
+	if err := installCmd.Run(); err != nil {
+		return fmt.Errorf("inir-cli update failed: %w", err)
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), "inir-cli update complete")
+	return nil
 }
 
 func runSetupCommand(setupDir string, args []string) error {
