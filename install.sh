@@ -498,6 +498,47 @@ verify_install() {
 }
 
 # ---------------------------------------------------------------------------
+# Systemd user service (auto-start on login)
+# ---------------------------------------------------------------------------
+setup_systemd_service() {
+    local bindir="$1"
+    local binary="${bindir}/${BINARY_NAME}"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        log_dim "Would attempt: ${binary} service install"
+        log_dim "Would attempt: ${binary} service enable"
+        return
+    fi
+
+    if ! command -v systemctl &>/dev/null; then
+        log_dim "systemctl not found; skipping iNiR user service setup"
+        return
+    fi
+
+    # Best-effort: only proceed when systemd user manager is reachable.
+    if ! systemctl --user show-environment >/dev/null 2>&1; then
+        log_dim "systemd --user not reachable in this session; skipping service setup"
+        return
+    fi
+
+    log_step "Installing iNiR user service"
+    if "$binary" service install >/dev/null 2>&1; then
+        log_ok "Installed inir.service"
+    else
+        log_warn "Failed to install inir.service (non-fatal)"
+        return
+    fi
+
+    log_step "Enabling iNiR user service for compositor startup"
+    if "$binary" service enable >/dev/null 2>&1; then
+        log_ok "Enabled inir.service"
+    else
+        log_warn "Could not enable inir.service (no supported compositor detected?)"
+        log_dim "You can run manually later: ${BINARY_NAME} service enable"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Uninstall
 # ---------------------------------------------------------------------------
 do_uninstall() {
@@ -584,6 +625,9 @@ main() {
 
     # Step 6: Verify
     verify_install "$bindir"
+
+    # Step 7: User service wiring (best-effort)
+    setup_systemd_service "$bindir"
 
     echo ""
     log "Installation complete! ${C_GREEN}${C_BOLD}${BINARY_NAME}${C_RESET} is ready."

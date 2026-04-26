@@ -87,9 +87,8 @@ func labF(t float64) float64 {
 }
 
 func labFInv(t float64) float64 {
-	e := 216.0 / 24389.0
 	k := 24389.0 / 27.0
-	if t*e > 16 {
+	if t > 6.0/29.0 {
 		return t * t * t
 	}
 	return (116.0*t - 16.0) / k
