@@ -5,12 +5,13 @@
 # Builds from source and installs the inir-cli binary to your system.
 # Idempotent: safe to re-run at any time.
 #
-# By default, this does NOT replace the upstream `inir` command.
-# Use --replace-inir to create an `inir` symlink that points to inir-cli.
+# After installation, prompts whether to create an `inir` symlink.
+# Default is NO — both commands coexist. Use --replace-inir to skip the prompt.
 #
 # Usage:
-#   ./install.sh                        # Install to ~/.local/bin (does NOT replace inir)
-#   ./install.sh --replace-inir         # Install + create inir symlink (replaces upstream)
+#   ./install.sh                        # Install to ~/.local/bin, prompt for inir alias
+#   ./install.sh --replace-inir         # Create inir symlink (no prompt)
+#   ./install.sh --no-replace-inir      # Skip prompt, keep upstream inir (no prompt)
 #   ./install.sh --prefix /usr          # Install to /usr/bin (requires sudo)
 #   ./install.sh --dry-run              # Show what would happen
 #   ./install.sh --uninstall            # Remove inir-cli (and inir symlink if present)
@@ -35,14 +36,16 @@ DEFAULT_PREFIX="$HOME/.local"
 # ---------------------------------------------------------------------------
 # Color helpers (disabled when piped or NO_COLOR is set)
 # ---------------------------------------------------------------------------
+# Using $'...' ANSI-C quoting so bash converts \033 to real ESC characters.
+# This ensures printf/echo render colors correctly regardless of implementation.
 if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
-    C_RED='\033[0;31m'
-    C_GREEN='\033[0;32m'
-    C_YELLOW='\033[0;33m'
-    C_BLUE='\033[0;34m'
-    C_BOLD='\033[1m'
-    C_DIM='\033[2m'
-    C_RESET='\033[0m'
+    C_RED=$'\033[0;31m'
+    C_GREEN=$'\033[0;32m'
+    C_YELLOW=$'\033[0;33m'
+    C_BLUE=$'\033[0;34m'
+    C_BOLD=$'\033[1m'
+    C_DIM=$'\033[2m'
+    C_RESET=$'\033[0m'
 else
     C_RED='' C_GREEN='' C_YELLOW='' C_BLUE='' C_BOLD='' C_DIM='' C_RESET=''
 fi
@@ -71,12 +74,47 @@ die() {
 }
 
 # ---------------------------------------------------------------------------
+# Interactive prompt (yes/no, default=no)
+# ---------------------------------------------------------------------------
+prompt_yes_no() {
+    local question="$1"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        # In dry-run, assume no (the safe default)
+        return 1
+    fi
+
+    # Skip prompt if not a terminal (piped/CI)
+    if [[ ! -t 0 ]]; then
+        return 1
+    fi
+
+    while true; do
+        printf "${C_BOLD}  ?${C_RESET}  %s [y/N] " "$question"
+        local answer
+        read -r answer
+        answer="${answer,,}"  # lowercase
+
+        if [[ -z "$answer" ]]; then
+            # Enter pressed — default is No
+            return 1
+        fi
+
+        case "$answer" in
+            y|yes) return 0 ;;
+            n|no)  return 1 ;;
+            *)     echo "  Please answer y(es) or n(o)." ;;
+        esac
+    done
+}
+
+# ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
 PREFIX=""
 DRY_RUN=0
 UNINSTALL=0
-REPLACE_INIR="no"  # "yes" = create inir symlink, "no" = keep upstream (default)
+REPLACE_INIR=""  # "" = prompt, "yes" = always, "no" = never
 
 usage() {
     cat <<EOF
@@ -88,6 +126,7 @@ ${C_BOLD}Usage:${C_RESET}
 ${C_BOLD}Options:${C_RESET}
   --prefix DIR          Install to DIR/bin (default: ${DEFAULT_PREFIX})
   --replace-inir        Create an ${C_BOLD}inir${C_RESET} symlink replacing the upstream command
+  --no-replace-inir     Skip the inir prompt, keep upstream (no prompt)
   --uninstall           Remove ${BINARY_NAME} (and inir symlink if present)
   --dry-run             Show what would happen without doing it
   --verbose, -v        Verbose output
@@ -99,18 +138,23 @@ ${C_BOLD}Environment:${C_RESET}
   LD_FLAGS          Additional linker flags
 
 ${C_BOLD}About the inir alias:${C_RESET}
-  By default, this installer does ${C_BOLD}not${C_RESET} replace the upstream ${C_BOLD}inir${C_RESET} command.
-  Both commands coexist: ${C_BOLD}inir${C_RESET} runs the upstream shell script,
-  ${C_BOLD}inir-cli${C_RESET} runs the Go CLI.
+  The upstream iNiR project provides a shell command called ${C_BOLD}inir${C_RESET}.
+  After installing, you'll be asked if you want to create an ${C_BOLD}inir${C_RESET}
+  symlink pointing to ${BINARY_NAME}. This lets you use the shorter
+  ${C_BOLD}inir${C_RESET} command instead of ${C_BOLD}inir-cli${C_RESET}.
 
-  Pass ${C_BOLD}--replace-inir${C_RESET} to create an ${C_BOLD}inir${C_RESET} symlink pointing
-  to ${BINARY_NAME}. This replaces the upstream command — typing ${C_BOLD}inir${C_RESET}
-  will then run the Go CLI instead. The upstream file is backed up as
-  ${C_BOLD}inir.upstream.bak${C_RESET} and restored on uninstall.
+  Default answer is ${C_BOLD}No${C_RESET} — both commands coexist:
+    ${C_BOLD}inir${C_RESET}     → upstream shell script
+    ${C_BOLD}inir-cli${C_RESET} → Go CLI
+
+  If you choose ${C_BOLD}Yes${C_RESET}: the symlink replaces the upstream command.
+  The upstream file is backed up as ${C_BOLD}inir.upstream.bak${C_RESET} and
+  restored on uninstall.
 
 ${C_BOLD}Examples:${C_RESET}
-  ./install.sh                          # Install to ~/.local/bin (inir stays as upstream)
-  ./install.sh --replace-inir           # Install + create inir symlink (replaces upstream)
+  ./install.sh                          # Install, prompt for inir alias
+  ./install.sh --replace-inir           # Install + create inir symlink (no prompt)
+  ./install.sh --no-replace-inir        # Install + skip prompt (keep upstream)
   ./install.sh --prefix /usr/local      # Install to /usr/local/bin
   ./install.sh --uninstall              # Remove inir-cli and inir symlink
   ./install.sh --dry-run --verbose      # Preview with full output
@@ -125,6 +169,7 @@ while [[ $# -gt 0 ]]; do
             PREFIX="${1:?--prefix requires a directory argument}"
             ;;
         --replace-inir)     REPLACE_INIR="yes" ;;
+        --no-replace-inir)  REPLACE_INIR="no" ;;
         --uninstall)         UNINSTALL=1 ;;
         --dry-run)           DRY_RUN=1 ;;
         --verbose|-v)        VERBOSE=1 ;;
@@ -267,26 +312,39 @@ setup_inir_alias() {
     local target="${bindir}/${BINARY_NAME}"
     local alias_path="${bindir}/${ALIAS_NAME}"
 
-    # Default: do not replace upstream inir
-    if [[ "$REPLACE_INIR" != "yes" ]]; then
-        # Check if an inir symlink already points to us (from a previous --replace-inir install)
-        if [[ -L "$alias_path" ]]; then
-            local current_target
-            current_target="$(readlink -f "$alias_path" 2>/dev/null || true)"
-            if [[ "$current_target" == "$target" ]] || [[ "$(basename "$current_target")" == "${BINARY_NAME}" ]]; then
-                log_ok "Symlink ${C_BOLD}${ALIAS_NAME}${C_RESET} → ${BINARY_NAME} already exists"
-                return
-            fi
-        fi
+    # Determine whether to create the alias
+    local create_alias=""
 
+    if [[ "$REPLACE_INIR" == "yes" ]]; then
+        create_alias="yes"
+    elif [[ "$REPLACE_INIR" == "no" ]]; then
+        create_alias="no"
+    else
+        # Interactive prompt (default: No)
+        echo ""
+        log "The upstream iNiR project provides a shell command called ${C_BOLD}inir${C_RESET}."
+        log "You can create an ${C_BOLD}inir${C_RESET} symlink that points to ${C_BOLD}${BINARY_NAME}${C_RESET}."
+        echo ""
+        log_dim "  Yes → typing ${C_BOLD}inir${C_RESET} will run ${C_BOLD}${BINARY_NAME}${C_RESET} (replaces upstream)"
+        log_dim "  No  → ${C_BOLD}inir${C_RESET} stays as the upstream shell script, use ${C_BOLD}${BINARY_NAME}${C_RESET} for the Go CLI"
+        echo ""
+
+        if prompt_yes_no "Create an 'inir' symlink pointing to inir-cli?"; then
+            create_alias="yes"
+        else
+            create_alias="no"
+        fi
+    fi
+
+    if [[ "$create_alias" == "no" ]]; then
         echo ""
         log_ok "Keeping upstream ${C_BOLD}inir${C_RESET} command as-is"
         log_dim "Use ${C_BOLD}${BINARY_NAME}${C_RESET} to run the Go CLI"
-        log_dim "Re-run with ${C_BOLD}--replace-inir${C_RESET} to create an ${C_BOLD}inir${C_RESET} symlink"
+        log_dim "Re-run with ${C_BOLD}--replace-inir${C_RESET} to create an ${C_BOLD}inir${C_RESET} symlink later"
         return
     fi
 
-    # --- REPLACE_INIR == "yes" ---
+    # --- create_alias == "yes" ---
 
     # Check if alias already points to our binary
     if [[ -L "$alias_path" ]]; then
@@ -307,15 +365,21 @@ setup_inir_alias() {
         return
     fi
 
-    # Check if a real file (not symlink) exists at alias path — back it up
+    # Check if a real file (not symlink) exists at alias path
     if [[ -e "$alias_path" ]] && [[ ! -L "$alias_path" ]]; then
         local backup="${alias_path}.upstream.bak"
+        echo ""
+        log_warn "An existing file exists at ${C_BOLD}${alias_path}${C_RESET}"
+        log_dim "This appears to be the upstream iNiR shell command."
+        log_dim "It will be backed up as ${C_BOLD}inir.upstream.bak${C_RESET} and restored on uninstall."
+        echo ""
+
         if [[ "$DRY_RUN" -eq 1 ]]; then
             log_dim "Would back up: ${alias_path} → ${backup}"
             log_dim "Would create symlink: ${alias_path} → ${target}"
             return
         fi
-        log_warn "An existing file exists at ${C_BOLD}${alias_path}${C_RESET}"
+
         log_step "Backing up upstream: ${alias_path} → ${backup}"
         mv "$alias_path" "$backup"
         log_dim "Original saved as ${backup}"
@@ -434,6 +498,47 @@ verify_install() {
 }
 
 # ---------------------------------------------------------------------------
+# Systemd user service (auto-start on login)
+# ---------------------------------------------------------------------------
+setup_systemd_service() {
+    local bindir="$1"
+    local binary="${bindir}/${BINARY_NAME}"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        log_dim "Would attempt: ${binary} service install"
+        log_dim "Would attempt: ${binary} service enable"
+        return
+    fi
+
+    if ! command -v systemctl &>/dev/null; then
+        log_dim "systemctl not found; skipping iNiR user service setup"
+        return
+    fi
+
+    # Best-effort: only proceed when systemd user manager is reachable.
+    if ! systemctl --user show-environment >/dev/null 2>&1; then
+        log_dim "systemd --user not reachable in this session; skipping service setup"
+        return
+    fi
+
+    log_step "Installing iNiR user service"
+    if "$binary" service install >/dev/null 2>&1; then
+        log_ok "Installed inir.service"
+    else
+        log_warn "Failed to install inir.service (non-fatal)"
+        return
+    fi
+
+    log_step "Enabling iNiR user service for compositor startup"
+    if "$binary" service enable >/dev/null 2>&1; then
+        log_ok "Enabled inir.service"
+    else
+        log_warn "Could not enable inir.service (no supported compositor detected?)"
+        log_dim "You can run manually later: ${BINARY_NAME} service enable"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Uninstall
 # ---------------------------------------------------------------------------
 do_uninstall() {
@@ -520,6 +625,9 @@ main() {
 
     # Step 6: Verify
     verify_install "$bindir"
+
+    # Step 7: User service wiring (best-effort)
+    setup_systemd_service "$bindir"
 
     echo ""
     log "Installation complete! ${C_GREEN}${C_BOLD}${BINARY_NAME}${C_RESET} is ready."

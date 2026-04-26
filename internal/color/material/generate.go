@@ -26,6 +26,7 @@ type GenerateOptions struct {
 	ColorStrength      float64
 	Soften             bool
 	BlendBgFg          bool
+	TermSchemePath     string
 }
 
 type GenerateResult struct {

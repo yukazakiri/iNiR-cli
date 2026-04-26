@@ -43,6 +43,7 @@ var (
 	flagSoften             bool
 	flagBlendBgFg          bool
 	flagForceDarkTerminal  bool
+	flagTermScheme         string
 )
 
 func init() {
@@ -91,6 +92,7 @@ func bindGenerateFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&flagSoften, "soften", false, "Soften generated colors")
 	cmd.Flags().BoolVar(&flagBlendBgFg, "blend-bg-fg", false, "Shift terminal bg/fg towards accent")
 	cmd.Flags().BoolVar(&flagForceDarkTerminal, "force-dark-terminal", false, "Force dark mode for terminal colors")
+	cmd.Flags().StringVar(&flagTermScheme, "termscheme", "", "Path to base terminal scheme JSON (dark/light objects)")
 }
 
 func bindApplyFlags(cmd *cobra.Command) {
@@ -264,6 +266,7 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 		ColorStrength:      colorStrength,
 		Soften:             flagSoften || cfg.SoftenColors,
 		BlendBgFg:          flagBlendBgFg,
+		TermSchemePath:     flagTermScheme,
 	}
 
 	result, err := color.Generate(genOpts)
@@ -288,17 +291,9 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "[inir-cli] Warning: SCSS write failed: %v\n", err)
 	}
 
-	if flagForceDarkTerminal {
-		darkOpts := genOpts
-		darkOpts.Mode = "dark"
-		darkResult, err := color.Generate(darkOpts)
-		if err == nil {
-			darkResult.WriteTerminalJSON(contract.TerminalPath)
-			darkResult.WriteSCSS(contract.SCSSPath)
-			*result = *darkResult
-		}
-	}
-
+	// Write chromium.theme and render templates using the ORIGINAL result
+	// (upstream switchwall.sh runs these in the first pass only).
+	// Must happen BEFORE the optional forced-dark terminal overwrite.
 	if err := writeChromiumThemeContracts(contract.OutputDir, result.Palette); err != nil {
 		notifyPipelineError("Theme generate warning", err)
 		fmt.Fprintf(os.Stderr, "[inir-cli] Warning: chromium.theme contract write failed: %v\n", err)
@@ -307,6 +302,17 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 	if flagTemplateDir != "" {
 		if err := template.RenderAll(flagTemplateDir, result); err != nil {
 			fmt.Fprintf(os.Stderr, "[inir-cli] Warning: template rendering failed: %v\n", err)
+		}
+	}
+
+	if flagForceDarkTerminal {
+		darkOpts := genOpts
+		darkOpts.Mode = "dark"
+		darkResult, err := color.Generate(darkOpts)
+		if err == nil {
+			darkResult.WriteTerminalJSON(contract.TerminalPath)
+			darkResult.WriteSCSS(contract.SCSSPath)
+			*result = *darkResult
 		}
 	}
 
